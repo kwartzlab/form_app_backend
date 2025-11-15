@@ -332,7 +332,7 @@ def send_slack_notification(data, file_links):
         print(f"Error sending Slack notification: {e}")
         return False
 
-def send_email_notification(data, file_links):
+def send_email_notification(data, file_links):          # todo: separate html body template into a separate file for readability
     """Send email notification with file links instead of attachments"""
     try:
         if not all([EMAIL_ADDRESS, EMAIL_PASSWORD, RECIPIENT_EMAIL]):
@@ -348,8 +348,92 @@ def send_email_notification(data, file_links):
         expenses = json.loads(data['expenses'])
         total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
         
-        body = f"""
-New reimbursement request submitted:
+        # Create HTML table for expenses
+        expense_rows = ""
+        for exp in expenses:
+            expense_rows += f"""
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">{exp.get('approval', 'N/A')}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">{exp.get('vendor', 'N/A')}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">{exp.get('description', 'N/A')}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${exp.get('amount', '0')}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">{exp.get('hst', 'N/A')}</td>
+            </tr>"""
+        
+        # Create file links HTML
+        file_links_html = ""
+        if file_links:
+            file_links_html = "<h3>Attached Files:</h3><ul>"
+            for link in file_links:
+                file_links_html += f'<li><a href="{link}">View File</a></li>'
+            file_links_html += "</ul>"
+        else:
+            file_links_html = "<p><em>No files attached.</em></p>"
+        
+        # Comments section
+        comments_html = ""
+        if data.get('comments'):
+            comments_html = f"""
+            <h3>Additional Comments:</h3>
+            <p>{data['comments']}</p>"""
+        
+        # HTML body
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+                th {{ background-color: #4CAF50; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; }}
+                td {{ border: 1px solid #ddd; padding: 8px; }}
+                tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                .header {{ background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+                .total {{ font-size: 18px; font-weight: bold; margin: 20px 0; padding: 10px; background-color: #e8f5e9; border-left: 4px solid #4CAF50; }}
+                h2 {{ color: #2c3e50; }}
+                h3 {{ color: #34495e; margin-top: 20px; }}
+                a {{ color: #1976d2; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
+            </style>
+        </head>
+        <body>
+            <h2>New Reimbursement Request</h2>
+            
+            <div class="header">
+                <p><strong>Submitted by:</strong> {data['firstName']} {data['lastName']}</p>
+                <p><strong>Email:</strong> {data['email']}</p>
+                <p><strong>Date:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            </div>
+            
+            <h3>Expense Details:</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Approval/Project</th>
+                        <th>Vendor</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>HST</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {expense_rows}
+                </tbody>
+            </table>
+            
+            <div class="total">
+                TOTAL: ${total:.2f}
+            </div>
+            
+            {comments_html}
+            
+            {file_links_html}
+        </body>
+        </html>
+        """
+        
+        # Plain text fallback
+        plain_body = f"""
+New Reimbursement Request
 
 Submitted by: {data['firstName']} {data['lastName']}
 Email: {data['email']}
@@ -358,7 +442,7 @@ Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 EXPENSES:
 """
         for i, exp in enumerate(expenses, 1):
-            body += f"""
+            plain_body += f"""
 {i}. Approval/Project: {exp.get('approval', 'N/A')}
    Vendor: {exp.get('vendor', 'N/A')}
    Description: {exp.get('description', 'N/A')}
@@ -366,22 +450,23 @@ EXPENSES:
    HST: {exp.get('hst', 'N/A')}
 """
         
-        body += f"\nTOTAL: ${total:.2f}\n"
+        plain_body += f"\nTOTAL: ${total:.2f}\n"
         
         if data.get('comments'):
-            body += f"\nAdditional Comments:\n{data['comments']}\n"
+            plain_body += f"\nAdditional Comments:\n{data['comments']}\n"
         
-        # Add file links
         if file_links:
-            body += "\n\nATTACHED FILES:\n"
+            plain_body += "\n\nATTACHED FILES:\n"
             for i, link in enumerate(file_links, 1):
-                body += f"{i}. {link}\n"
+                plain_body += f"{i}. {link}\n"
         else:
-            body += "\n\nNo files attached.\n"
+            plain_body += "\n\nNo files attached.\n"
         
-        msg.attach(MIMEText(body, 'plain'))
+        # Attach both plain text and HTML versions
+        # msg.attach(MIMEText(plain_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
         
-        # Send email (no attachments)
+        # Send email
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
@@ -422,12 +507,7 @@ def submit_reimbursement():
         for key in request.files:
             file_data = request.files[key]
             if file_data.filename:
-                link = upload_to_google_drive(
-                    file_data, 
-                    file_data.filename, 
-                    request_id=nextId,
-                    parent_folder_id=folder_id
-                )
+                link = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
                 if link:
                     file_links.append(link)
 
