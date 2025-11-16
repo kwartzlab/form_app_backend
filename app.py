@@ -32,22 +32,22 @@ EMAIL_ADDRESS = os.environ.get('EMAIL_ADDRESS')
 EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL')
 GOOGLE_SHEET_NAME = os.environ.get('GOOGLE_SHEET_NAME')
-RECAPTCHA_SECRET_KEY = os.environ.get('RECAPTCHA_SECRET_KEY')
+HCAPTCHA_SECRET_KEY = os.environ.get('CAPTCHA_SECRET')
 
-def verify_recaptcha(token):
-    """Verify reCAPTCHA token with Google"""
+def verify_hcaptcha(token):
+    """Verify hCAPTCHA token"""
     try:
         response = req.post(
             'https://hcaptcha.com/siteverify',
             data={
-                'secret': RECAPTCHA_SECRET_KEY,
+                'secret': HCAPTCHA_SECRET_KEY,
                 'response': token
             }
         )
         result = response.json()
         return result.get('success', False)
     except Exception as e:
-        print(f"Error verifying reCAPTCHA: {e}")
+        print(f"Error verifying hCAPTCHA: {e}")
         return False
 
 def setup_google_sheets():
@@ -533,6 +533,14 @@ def submit_reimbursement():
     """Handle reimbursement submission"""
     results = {}
     try:
+        # Verify captcha FIRST before doing anything else
+        captcha_token = request.form.get('captchaToken')
+        if not captcha_token:
+            return jsonify({'error': 'Captcha token missing'}), 400
+        
+        if not verify_hcaptcha(captcha_token):
+            return jsonify({'error': 'Captcha verification failed. Please try again.'}), 400
+
         # Extract form data
         data = {
             'firstName': request.form.get('firstName'),
