@@ -56,19 +56,6 @@ def setup_google_sheets():
              'https://www.googleapis.com/auth/drive']
     
     # Load credentials from environment variable (JSON string)
-    #original
-    """
-    creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
-    if not creds_json:
-        print("Warning: GOOGLE_SHEETS_CREDENTIALS not set")
-        return None
-    
-    creds_dict = json.loads(creds_json)
-    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(credentials)
-    return client"""
-
-    #new
     creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
     if creds_json:
         creds_dict = json.loads(creds_json)
@@ -87,31 +74,24 @@ def get_next_id_from_google_sheet():
             return (datetime.now().year * 10000 + 1)
         
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1   
-        # get last index
         numRows = len(sheet.col_values(1))
         lastId = sheet.cell(numRows, 1).value
-        #print(lastId)
         newId = 0
         try:
             lastId_num = int(lastId)
-            #print("last id is valid")
             id_year = math.floor(lastId_num/10000)
-            #print(id_year)
             id_index = lastId_num - (id_year * 10000)
-            #print(id_index)
             current_year = datetime.now().year
             if id_year < current_year:
                 newId = (current_year * 10000) + 1
             else:
                 newId = (current_year * 10000) + id_index + 1 
         except ValueError:
-            #print("last id is invalid")
             newId = (datetime.now().year * 10000) + 1
         return newId
     except Exception as e:
         print(f"Error accessing google sheet: {e}")
         return 0            #if accessing google sheete failed, abort attempt
-        # return (datetime.now().year * 10000 + 1)
 
 def add_to_google_sheet(data, file_links):
     """Add reimbursement data to Google Sheet"""
@@ -125,9 +105,6 @@ def add_to_google_sheet(data, file_links):
         # Prepare row data
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         expenses = json.loads(data['expenses'])
-        
-        # Calculate total
-        total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
 
         # Format file links
         file_links_str = ', '.join(file_links) if file_links else 'No attachments'
