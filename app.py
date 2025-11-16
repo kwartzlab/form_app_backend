@@ -531,6 +531,7 @@ EXPENSES:
 @app.route('/submit', methods=['POST'])
 def submit_reimbursement():
     """Handle reimbursement submission"""
+    results = {}
     try:
         # Extract form data
         data = {
@@ -592,10 +593,8 @@ def submit_reimbursement():
                 return jsonify({'error': 'Server Error: failed to record entry in google sheet'}), 500
 
             # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
-            results = {
-                'slack': send_slack_notification(data, file_links),
-                'email': send_email_notification(data, file_links)
-            }
+            results['slack'] = send_slack_notification(data, file_links)
+            results['email'] = send_email_notification(data, file_links)
             
             if not results['slack'] or not results['email']:
                 message = 'Submission succeeded, but one or more integrations failed. Please contact the treasurer.'
