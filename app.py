@@ -27,6 +27,16 @@ def verify_hcaptcha(token):
         print(f"Error verifying hCAPTCHA: {e}")
         return False
 
+@app.route('/submit-PA', methods=['POST'])
+def submit_purchApproval():
+    """Handle Purcahse Approval submission"""
+    print("PURCHASE APPROVAL")
+
+    return jsonify({
+        'message': "Submission Succeeded"
+    }), 200
+
+
 @app.route('/submit', methods=['POST'])
 def submit_reimbursement():
     """Handle reimbursement submission"""
