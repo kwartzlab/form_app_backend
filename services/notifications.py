@@ -100,7 +100,44 @@ def send_slack_notification(data, file_links):
         print(f"Error sending Slack notification: {e}")
         return False
 
-def send_email_notification(data, file_links):          # todo: separate html body template into a separate file for readability
+def build_plain_message(data, file_links):
+    # Plain text fallback
+    # todo: remove plaintext fallback entirely, or find a way to template-ize it
+    expenses = json.loads(data['expenses'])
+    total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
+    plain_body = f"""
+New Reimbursement Request
+
+Submitted by: {data['firstName']} {data['lastName']}
+Email: {data['email']}
+Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+EXPENSES:
+"""
+    for i, exp in enumerate(expenses, 1):
+        plain_body += f"""
+{i}. Approval/Project: {exp.get('approval', 'N/A')}
+Vendor: {exp.get('vendor', 'N/A')}
+Description: {exp.get('description', 'N/A')}
+Amount: ${exp.get('amount', '0')}
+HST: {exp.get('hst', 'N/A')}
+"""
+    
+    plain_body += f"\nTOTAL: ${total:.2f}\n"
+    
+    if data.get('comments'):
+        plain_body += f"\nAdditional Comments:\n{data['comments']}\n"
+    
+    if file_links:
+        plain_body += "\n\nATTACHED FILES:\n"
+        for i, link in enumerate(file_links, 1):
+            plain_body += f"{i}. {link}\n"
+    else:
+        plain_body += "\n\nNo files attached.\n"
+
+    return plain_body
+
+def send_email_notification(data, file_links):          # todo: send second message to submitter
     """Send email notification with file links instead of attachments"""
     try:
         if not all([Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD, Config.RECIPIENT_EMAIL]):
@@ -130,39 +167,8 @@ def send_email_notification(data, file_links):          # todo: separate html bo
         msg['To'] = Config.RECIPIENT_EMAIL
         msg['Subject'] = f"New Reimbursement Request - {data['firstName']} {data['lastName']}"
 
-        # Plain text fallback
-        # todo: remove plaintext fallback entirely, or find a way to template-ize it
-        plain_body = f"""
-New Reimbursement Request
-
-Submitted by: {data['firstName']} {data['lastName']}
-Email: {data['email']}
-Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-EXPENSES:
-"""
-        for i, exp in enumerate(expenses, 1):
-            plain_body += f"""
-{i}. Approval/Project: {exp.get('approval', 'N/A')}
-   Vendor: {exp.get('vendor', 'N/A')}
-   Description: {exp.get('description', 'N/A')}
-   Amount: ${exp.get('amount', '0')}
-   HST: {exp.get('hst', 'N/A')}
-"""
-        
-        plain_body += f"\nTOTAL: ${total:.2f}\n"
-        
-        if data.get('comments'):
-            plain_body += f"\nAdditional Comments:\n{data['comments']}\n"
-        
-        if file_links:
-            plain_body += "\n\nATTACHED FILES:\n"
-            for i, link in enumerate(file_links, 1):
-                plain_body += f"{i}. {link}\n"
-        else:
-            plain_body += "\n\nNo files attached.\n"
-        
         # Attach both plain text and HTML versions
+        # plain_body = build_plain_message(data, file_links)
         # msg.attach(MIMEText(plain_body, 'plain'))
         msg.attach(MIMEText(html_body, 'html'))
         
