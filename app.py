@@ -92,7 +92,8 @@ def get_next_id_from_google_sheet():
         return newId
     except Exception as e:
         print(f"Error accessing google sheet: {e}")
-        return (datetime.now().year * 10000 + 1)
+        return 0            #if accessing google sheete failed, abort attempt
+        # return (datetime.now().year * 10000 + 1)
 
 def add_to_google_sheet(data, file_links):
     """Add reimbursement data to Google Sheet"""
@@ -134,6 +135,37 @@ def add_to_google_sheet(data, file_links):
         return True
     except Exception as e:
         print(f"Error adding to Google Sheet: {e}")
+        return False
+
+def delete_from_google_drive(file_id):
+    try:
+        # Use same credentials as Google Sheets
+        scope = ['https://spreadsheets.google.com/feeds',
+                 'https://www.googleapis.com/auth/drive']
+        
+        creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
+        if creds_json:
+            creds_dict = json.loads(creds_json)
+            credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        else:
+            credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        
+        # Build Drive API service
+        service = build('drive', 'v3', credentials=credentials)
+
+        # Use Shared Drive
+        supports_all_drives = {'supportsAllDrives': True}
+
+        # Delete the file
+        service.files().delete(
+            fileId=file_id,
+            supportsAllDrives=True
+        ).execute()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error deleting file from Google Drive: {e}")
         return False
 
 def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=None):
@@ -496,41 +528,67 @@ def submit_reimbursement():
             return jsonify({'error': 'Missing required fields'}), 400
         
         #establish an ID for the submission
-        nextId = get_next_id_from_google_sheet()
-        data['id'] = nextId
-        
-        # Upload files to Google Drive
-        file_links = []
-        folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')  # Optional: specific folder
+        nextId = get_next_id_from_google_sheet() 
+        if nextId == 0:
+            print(f"Error processing submission: could not access google sheet")
+            return jsonify({'error': 'Server Error: failed to access spreadsheet'}), 500
+        else:
+            data['id'] = nextId
 
-        # In your submit endpoint, where you upload files:
-        for key in request.files:
-            file_data = request.files[key]
-            if file_data.filename:
-                link = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
-                if link:
-                    file_links.append(link)
+            # core integrations are file upload and google sheets, do those first
 
-        # Process the submission with file links
-        results = {
-            'google_sheet': add_to_google_sheet(data, file_links),
-            'slack': send_slack_notification(data, file_links),
-            'email': send_email_notification(data, file_links),
-            'files_uploaded': len(file_links)
-        }
-        
-        # Check if at least one integration succeeded
-        if any(results.values()):
+            # Upload files to Google Drive
+            file_links = []
+            files = []
+            folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')  # Optional: specific folder
+
+            # In your submit endpoint, where you upload files:
+            uploadFailed = False
+            for key in request.files:
+                file_data = request.files[key]
+                if file_data.filename:
+                    link, fid = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
+                    if link:
+                        files.append({'fid': fid, 'link': link})
+                    else:
+                        uploadFailed = True
+            
+            if uploadFailed:
+                #delete files that were uploaded, then return error
+                for file in files:
+                    delete_from_google_drive(file['fid'])
+                print(f"Error processing submission: one or more file uploads failed")
+                return jsonify({'error': 'Server Error: failed to upload one or more files'}), 500
+            else:
+                for file in files:
+                    file_links.append(file['link'])
+                results['files_uploaded'] = len(file_links)
+
+            results['google_sheet'] = add_to_google_sheet(data, file_links)
+
+            if not results['google_sheet']:
+                #delete files that were uploaded, then return error
+                for file in files:
+                    delete_from_google_drive(file['fid'])
+                print(f"Error processing submission: failed to record entry in google sheet")
+                return jsonify({'error': 'Server Error: failed to record entry in google sheet'}), 500
+
+            # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
+            results = {
+                'slack': send_slack_notification(data, file_links),
+                'email': send_email_notification(data, file_links)
+            }
+            
+            if not results['slack'] or not results['email']:
+                message = 'Submission succeeded, but one or more integrations failed. Please contact the treasurer.'
+            else:
+                message = 'Submission succeeded.'
+
             return jsonify({
-                'message': 'Reimbursement request submitted successfully',
+                'message': message,
                 'details': results
             }), 200
-        else:
-            return jsonify({
-                'error': 'Failed to process submission',
-                'details': results
-            }), 500
-            
+                
     except Exception as e:
         print(f"Error processing submission: {e}")
         return jsonify({'error': 'Internal server error'}), 500
