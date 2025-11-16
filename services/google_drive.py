@@ -6,19 +6,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 from config import Config
+from services import get_credentials
 
 def delete_from_google_drive(file_id):
     try:
-        # Use same credentials as Google Sheets
-        scope = ['https://spreadsheets.google.com/feeds',
-                 'https://www.googleapis.com/auth/drive']
-        
-        creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
-        if creds_json:
-            creds_dict = json.loads(creds_json)
-            credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        else:
-            credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        credentials = get_credentials()
         
         # Build Drive API service
         service = build('drive', 'v3', credentials=credentials)
@@ -41,16 +33,7 @@ def delete_from_google_drive(file_id):
 def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=None):
     """Upload file to Google Drive in a request-specific subfolder and return shareable link"""
     try:
-        # Use same credentials as Google Sheets
-        scope = ['https://spreadsheets.google.com/feeds',
-                 'https://www.googleapis.com/auth/drive']
-        
-        creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
-        if creds_json:
-            creds_dict = json.loads(creds_json)
-            credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        else:
-            credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        credentials = get_credentials()
         
         # Build Drive API service
         service = build('drive', 'v3', credentials=credentials)

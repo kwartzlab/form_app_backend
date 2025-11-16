@@ -3,26 +3,14 @@ import json
 import math
 from datetime import datetime
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
 from config import Config
-
-
+from services import get_credentials
 
 def setup_google_sheets():
     """Initialize Google Sheets API connection"""
-    scope = ['https://spreadsheets.google.com/feeds',
-             'https://www.googleapis.com/auth/drive']
-    
-    # Load credentials from environment variable (JSON string)
-    creds_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
-    if creds_json:
-        creds_dict = json.loads(creds_json)
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    else:
-        # Load from credentials.json file (for local testing)
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-    
+    credentials = get_credentials()
+
     client = gspread.authorize(credentials)
     return client
 
