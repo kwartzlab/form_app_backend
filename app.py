@@ -27,96 +27,154 @@ def verify_hcaptcha(token):
         print(f"Error verifying hCAPTCHA: {e}")
         return False
 
+def validate_input(endpoint, submissionReq):
+    # currently no need to apply different validation to different form types since they have the same fields
+    try:
+        # Verify captcha first before doing anything else
+        captcha_token = submissionReq.form.get('captchaToken')
+        if not captcha_token:
+            return [0, 'Captcha token missing', 400]
+        
+        if not verify_hcaptcha(captcha_token):
+            return [0, 'Captcha verification failed. Please try again.', 400]
+
+        # Extract form data
+        data = {
+            'firstName': submissionReq.form.get('firstName'),
+            'lastName': submissionReq.form.get('lastName'),
+            'email': submissionReq.form.get('email'),
+            'comments': submissionReq.form.get('comments', ''),
+            'expenses': submissionReq.form.get('expenses')
+        }
+        
+        # Validate required fields
+        if not all([data['firstName'], data['lastName'], data['email'], data['expenses']]):
+            return [0, 'Missing required fields', 400]
+        
+        return [1, data]
+    except Exception as e:
+        print(f"Error processing submission: {e}")
+        return [0, 'Internal server error', 500]
+
+def sheets_and_receipts(data, files, endpoint):
+    # Upload files to Google Drive
+    file_links = []
+    files = []
+    folder_id = Config.GOOGLE_DRIVE_FOLDER[endpoint]
+
+    uploadFailed = False
+    for key in files:
+        file_data = files[key]
+        if file_data.filename:
+            link, fid = upload_to_google_drive(file_data, file_data.filename, request_id=data["id"], parent_folder_id=folder_id)
+            if link:
+                files.append({'fid': fid, 'link': link})
+            else:
+                uploadFailed = True
+
+    results = {}
+    if uploadFailed:
+        #delete files that were uploaded, then return error
+        for file in files:
+            delete_from_google_drive(file['fid'])
+        print(f"Error processing submission: one or more file uploads failed")
+        return [0, 'Server Error: failed to upload one or more files', 500]
+    else:
+        for file in files:
+            file_links.append(file['link'])
+        results['files_uploaded'] = {"len": len(file_links), "list": file_links}
+
+    results['google_sheet'] = add_to_google_sheet(endpoint, data, file_links)
+
+    if not results['google_sheet']:
+        #delete files that were uploaded, then return error
+        for file in files:
+            delete_from_google_drive(file['fid'])
+        print(f"Error processing submission: failed to record entry in google sheet")
+        return [0, 'Server Error: failed to record entry in google sheet', 500]
+
+    return [1, results]
+    
+def build_return_message(results, endpoint):
+    message = endpoint + ' Submission Succeeded'
+    if not results['slack'] or not results['email']:
+        message = message + ', but one or more integrations failed. Please contact the treasurer'
+    message = message + '.'
+    return message
+
 @app.route('/submit-PA', methods=['POST'])
 def submit_purchApproval():
     """Handle Purcahse Approval submission"""
-    print("PURCHASE APPROVAL")
+    endpoint = 'Purchase Approval'
+    try:
+        result = validate_input(endpoint, request)
+        if result[0] == 0:
+            return jsonify({'error': result[1]}), result[2]
+        else:
+            data = result[1]
 
-    return jsonify({
-        'message': "Submission Succeeded"
-    }), 200
+        # establish an ID for the submission, needed for file upload folder name as well as sheet entries
+        data['id'] = get_next_id_from_google_sheet(endpoint) 
+        if data['id'] == 0:
+            print(f"Error processing submission: could not access google sheet")
+            return jsonify({'error': 'Server Error: failed to access spreadsheet'}), 500
+        
+        # core integrations are file upload and google sheets, do those first
+        sheet_result = sheets_and_receipts(data, request.files, endpoint)
+        if sheet_result[0] == 0:
+            return jsonify({'error': sheet_result[1]}), sheet_result[2]
+        else:
+            results = sheet_result[1]
+            file_links = results["files_uploaded"]["list"]
+
+        # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
+        results['slack'] = send_slack_notification(data, file_links)
+        results['email'] = send_email_notification(endpoint, data, file_links)
+        
+        message = build_return_message(results, endpoint)
+
+        return jsonify({
+            'message': message,
+            'details': results
+        }), 200
+
+    except Exception as e:
+        print(f"Error processing Purchase Approval submission: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 @app.route('/submit', methods=['POST'])
 def submit_reimbursement():
     """Handle reimbursement submission"""
+    endpoint = 'Reimbursement Request'
     try:
-        # Verify captcha FIRST before doing anything else
-        captcha_token = request.form.get('captchaToken')
-        if not captcha_token:
-            return jsonify({'error': 'Captcha token missing'}), 400
+        result = validate_input(endpoint, request)
+        if result[0] == 0:
+            return jsonify({'error': result[1]}), result[2]
+        else:
+            data = result[1]
         
-        if not verify_hcaptcha(captcha_token):
-            return jsonify({'error': 'Captcha verification failed. Please try again.'}), 400
-
-        # Extract form data
-        data = {
-            'firstName': request.form.get('firstName'),
-            'lastName': request.form.get('lastName'),
-            'email': request.form.get('email'),
-            'comments': request.form.get('comments', ''),
-            'expenses': request.form.get('expenses')
-        }
-        
-        # Validate required fields
-        if not all([data['firstName'], data['lastName'], data['email'], data['expenses']]):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
-        #establish an ID for the submission
-        nextId = get_next_id_from_google_sheet() 
-        if nextId == 0:
+        # establish an ID for the submission, needed for file upload folder name as well as sheet entries
+        data['id'] = get_next_id_from_google_sheet(endpoint) 
+        if data['id'] == 0:
             print(f"Error processing submission: could not access google sheet")
             return jsonify({'error': 'Server Error: failed to access spreadsheet'}), 500
 
-        data['id'] = nextId
-        
         # core integrations are file upload and google sheets, do those first
-
-        # Upload files to Google Drive
-        file_links = []
-        files = []
-        folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')  # Optional: specific folder
-
-        # In your submit endpoint, where you upload files:
-        uploadFailed = False
-        for key in request.files:
-            file_data = request.files[key]
-            if file_data.filename:
-                link, fid = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
-                if link:
-                    files.append({'fid': fid, 'link': link})
-                else:
-                    uploadFailed = True
-        
-        results = {}
-        if uploadFailed:
-            #delete files that were uploaded, then return error
-            for file in files:
-                delete_from_google_drive(file['fid'])
-            print(f"Error processing submission: one or more file uploads failed")
-            return jsonify({'error': 'Server Error: failed to upload one or more files'}), 500
+        sheet_result = sheets_and_receipts(data, request.files, endpoint)
+        print(sheet_result)
+        if sheet_result[0] == 0:
+            print("sheet access or file upload failed")
+            return jsonify({'error': sheet_result[1]}), sheet_result[2]
         else:
-            for file in files:
-                file_links.append(file['link'])
-            results['files_uploaded'] = len(file_links)
-
-        results['google_sheet'] = add_to_google_sheet(data, file_links)
-
-        if not results['google_sheet']:
-            #delete files that were uploaded, then return error
-            for file in files:
-                delete_from_google_drive(file['fid'])
-            print(f"Error processing submission: failed to record entry in google sheet")
-            return jsonify({'error': 'Server Error: failed to record entry in google sheet'}), 500
+            results = sheet_result[1]
+            file_links = results["files_uploaded"]["list"]
 
         # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
-        results['slack'] = send_slack_notification(data, file_links)
-        results['email'] = send_email_notification(data, file_links)
+        results['slack'] = True         #we currently only bother sending PAs to a channel
+        results['email'] = send_email_notification(endpoint, data, file_links)
         
-        if not results['slack'] or not results['email']:
-            message = 'Submission succeeded, but one or more integrations failed. Please contact the treasurer.'
-        else:
-            message = 'Submission succeeded.'
+        message = build_return_message(results, endpoint)
 
         return jsonify({
             'message': message,
@@ -124,7 +182,7 @@ def submit_reimbursement():
         }), 200
                 
     except Exception as e:
-        print(f"Error processing submission: {e}")
+        print(f"Error processing Reimbursement Request submission: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health', methods=['GET'])

@@ -18,6 +18,7 @@ def render_email_template(template_name, **context):
 
 def send_slack_notification(data, file_links):
     """Send notification to Slack with file links"""
+    # TODO generalize the slack notification function later. Right now, only the PA uses it
     try:
         if not Config.SLACK_WEBHOOK_URL:
             print("Warning: SLACK_WEBHOOK_URL not set")
@@ -34,13 +35,13 @@ def send_slack_notification(data, file_links):
             )
         
         message = {
-            "text": "New Reimbursement Request",
+            "text": "New Purchase Approval",
             "blocks": [
                 {
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": "💰 New Reimbursement Request"
+                        "text": "💰 New Purchase Approval"
                     }
                 },
                 {
@@ -102,7 +103,8 @@ def send_slack_notification(data, file_links):
 
 def build_plain_message(data, file_links):
     # Plain text fallback
-    # todo: remove plaintext fallback entirely, or find a way to template-ize it
+    # TODO remove plaintext fallback entirely, or find a way to template-ize it
+    # TODO implement PA version of plaintext, if keeping it
     expenses = json.loads(data['expenses'])
     total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
     plain_body = f"""
@@ -137,49 +139,84 @@ HST: {exp.get('hst', 'N/A')}
 
     return plain_body
 
-def send_email_notification(data, file_links):          # todo: send second message to submitter
+def email_builder(endpoint, data, file_links, email_type):
+    form_specific = {
+        "Reibursement Request": {
+            "blurb": f"Thank you for submitting your request! Our Treasurer will be in touch shortly.",
+            "list_template": f'email_reimbursement.html',
+            "ack_template": f'email_thank_you.html'
+        },
+        "Purchase Approval": {
+            "blurb": f"Thank you for submitting your purchase approval request! Remember to keep an eye on the member's list for questions and +1s from the Board.",
+            "list_template": f'email_purchase_approval.html',
+            "ack_template": f'email_thank_you.html'
+        }
+    }
+
+    if email_type == "thanks":
+        template = form_specific[endpoint]["ack_template"]
+    elif email_type == "list":
+        template = form_specific[endpoint]["list_template"]
+    else:
+        print("invalid template")
+        return 0
+
+    # Email body
+    expenses = json.loads(data['expenses'])
+    total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
+    html_body = render_email_template(
+        template,
+        thanks_blurb=form_specific[endpoint]["blurb"],
+        first_name=data['firstName'],
+        last_name=data['lastName'],
+        email=data['email'],
+        timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        expenses=expenses,
+        total=total,
+        comments=data.get('comments', ''),
+        file_links=file_links
+    )
+
+    return html_body
+
+def send_email_notification(endpoint, data, file_links):
     """Send email notification with file links instead of attachments"""
     try:
         if not all([Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD, Config.RECIPIENT_EMAIL]):
             print("Warning: Email credentials not fully configured")
             return False
-        
-        # Email body
-        expenses = json.loads(data['expenses'])
-        total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
 
         # Render HTML email from template
-        html_body = render_email_template(
-            'email_reimbursement.html',
-            first_name=data['firstName'],
-            last_name=data['lastName'],
-            email=data['email'],
-            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            expenses=expenses,
-            total=total,
-            comments=data.get('comments', ''),
-            file_links=file_links
-        )
+        list_notify_html_body = email_builder(endpoint, data, file_links, "list")
+        thanks_html_body = email_builder(endpoint, data, file_links, "thanks")
 
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['From'] = Config.EMAIL_ADDRESS
-        msg['To'] = Config.RECIPIENT_EMAIL
-        msg['Subject'] = f"New Reimbursement Request - {data['firstName']} {data['lastName']}"
+        # Create message for mailing list
+        list_msg = MIMEMultipart('alternative')
+        list_msg['From'] = Config.EMAIL_ADDRESS
+        list_msg['To'] = Config.RECIPIENT_EMAIL
+        list_msg['Subject'] = f"New {endpoint} - {data['firstName']} {data['lastName']}"
+
+        # Create acknowledgement message
+        ack_msg = MIMEMultipart('alternative')
+        ack_msg['From'] = Config.EMAIL_ADDRESS
+        ack_msg['To'] = data["email"]
+        ack_msg['Subject'] = f"New {endpoint} - {data['firstName']} {data['lastName']}"
 
         # Attach both plain text and HTML versions
         # plain_body = build_plain_message(data, file_links)
         # msg.attach(MIMEText(plain_body, 'plain'))
-        msg.attach(MIMEText(html_body, 'html'))
+        list_msg.attach(MIMEText(list_notify_html_body, 'html'))
+        ack_msg.attach(MIMEText(thanks_html_body, 'html'))
         
         # Send email
         server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
         server.starttls()
         server.login(Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD)
-        server.send_message(msg)
+        server.send_message(list_msg)
+        server.send_message(ack_msg)
         server.quit()
         
         return True
-    except Exception as e:
+    except Exception as e:              # TODO handle case where one email succeeds and the other fails
         print(f"Error sending email: {e}")
         return False

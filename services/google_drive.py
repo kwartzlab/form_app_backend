@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 from config import Config
-from services import get_credentials
+from .google_auth import get_credentials
 
 def delete_from_google_drive(file_id):
     try:

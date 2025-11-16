@@ -16,11 +16,11 @@
     </style>
 </head>
 <body>
-    <h2>New Reimbursement Request</h2>
-
-    <p>A reimbursement request has been submitted.</p>
-    <p>This email is for information only; reimbursement requests should already be approved unless they are under $50 or submitted by a team or project lead. The Treasurer will notify the board if additional +1s are required.</p>
-
+    <h2>{{form_type}} Received</h2>
+    <p>Hi {{ first_name }}</p>
+    <p>{{ thanks_blurb }}</p>
+    <p>Here is a record of your submission:</p>
+    
     <div class="header">
         <p><strong>Submitted by:</strong> {{ first_name }} {{ last_name }}</p>
         <p><strong>Email:</strong> {{ email }}</p>
@@ -31,7 +31,6 @@
     <table>
         <thead>
             <tr>
-                <th>Approval/Project</th>
                 <th>Vendor</th>
                 <th>Description</th>
                 <th>Amount</th>
@@ -41,7 +40,6 @@
         <tbody>
             {% for expense in expenses %}
             <tr>
-                <td>{{ expense.approval or 'N/A' }}</td>
                 <td>{{ expense.vendor or 'N/A' }}</td>
                 <td>{{ expense.description or 'N/A' }}</td>
                 <td style="text-align: right;">${{ expense.amount or '0' }}</td>
