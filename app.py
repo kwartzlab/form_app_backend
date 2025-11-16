@@ -16,6 +16,7 @@ import math
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
+import requests as req
 
 
 app = Flask(__name__)
@@ -31,6 +32,23 @@ EMAIL_ADDRESS = os.environ.get('EMAIL_ADDRESS')
 EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL')
 GOOGLE_SHEET_NAME = os.environ.get('GOOGLE_SHEET_NAME')
+RECAPTCHA_SECRET_KEY = os.environ.get('RECAPTCHA_SECRET_KEY')
+
+def verify_recaptcha(token):
+    """Verify reCAPTCHA token with Google"""
+    try:
+        response = req.post(
+            'https://hcaptcha.com/siteverify',
+            data={
+                'secret': RECAPTCHA_SECRET_KEY,
+                'response': token
+            }
+        )
+        result = response.json()
+        return result.get('success', False)
+    except Exception as e:
+        print(f"Error verifying reCAPTCHA: {e}")
+        return False
 
 def setup_google_sheets():
     """Initialize Google Sheets API connection"""
