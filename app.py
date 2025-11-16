@@ -30,7 +30,6 @@ def verify_hcaptcha(token):
 @app.route('/submit', methods=['POST'])
 def submit_reimbursement():
     """Handle reimbursement submission"""
-    results = {}
     try:
         # Verify captcha FIRST before doing anything else
         captcha_token = request.form.get('captchaToken')
@@ -58,60 +57,61 @@ def submit_reimbursement():
         if nextId == 0:
             print(f"Error processing submission: could not access google sheet")
             return jsonify({'error': 'Server Error: failed to access spreadsheet'}), 500
+
+        data['id'] = nextId
+        
+        # core integrations are file upload and google sheets, do those first
+
+        # Upload files to Google Drive
+        file_links = []
+        files = []
+        folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')  # Optional: specific folder
+
+        # In your submit endpoint, where you upload files:
+        uploadFailed = False
+        for key in request.files:
+            file_data = request.files[key]
+            if file_data.filename:
+                link, fid = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
+                if link:
+                    files.append({'fid': fid, 'link': link})
+                else:
+                    uploadFailed = True
+        
+        results = {}
+        if uploadFailed:
+            #delete files that were uploaded, then return error
+            for file in files:
+                delete_from_google_drive(file['fid'])
+            print(f"Error processing submission: one or more file uploads failed")
+            return jsonify({'error': 'Server Error: failed to upload one or more files'}), 500
         else:
-            data['id'] = nextId
+            for file in files:
+                file_links.append(file['link'])
+            results['files_uploaded'] = len(file_links)
 
-            # core integrations are file upload and google sheets, do those first
+        results['google_sheet'] = add_to_google_sheet(data, file_links)
 
-            # Upload files to Google Drive
-            file_links = []
-            files = []
-            folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID')  # Optional: specific folder
+        if not results['google_sheet']:
+            #delete files that were uploaded, then return error
+            for file in files:
+                delete_from_google_drive(file['fid'])
+            print(f"Error processing submission: failed to record entry in google sheet")
+            return jsonify({'error': 'Server Error: failed to record entry in google sheet'}), 500
 
-            # In your submit endpoint, where you upload files:
-            uploadFailed = False
-            for key in request.files:
-                file_data = request.files[key]
-                if file_data.filename:
-                    link, fid = upload_to_google_drive(file_data, file_data.filename, request_id=nextId, parent_folder_id=folder_id)
-                    if link:
-                        files.append({'fid': fid, 'link': link})
-                    else:
-                        uploadFailed = True
-            
-            if uploadFailed:
-                #delete files that were uploaded, then return error
-                for file in files:
-                    delete_from_google_drive(file['fid'])
-                print(f"Error processing submission: one or more file uploads failed")
-                return jsonify({'error': 'Server Error: failed to upload one or more files'}), 500
-            else:
-                for file in files:
-                    file_links.append(file['link'])
-                results['files_uploaded'] = len(file_links)
+        # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
+        results['slack'] = send_slack_notification(data, file_links)
+        results['email'] = send_email_notification(data, file_links)
+        
+        if not results['slack'] or not results['email']:
+            message = 'Submission succeeded, but one or more integrations failed. Please contact the treasurer.'
+        else:
+            message = 'Submission succeeded.'
 
-            results['google_sheet'] = add_to_google_sheet(data, file_links)
-
-            if not results['google_sheet']:
-                #delete files that were uploaded, then return error
-                for file in files:
-                    delete_from_google_drive(file['fid'])
-                print(f"Error processing submission: failed to record entry in google sheet")
-                return jsonify({'error': 'Server Error: failed to record entry in google sheet'}), 500
-
-            # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
-            results['slack'] = send_slack_notification(data, file_links)
-            results['email'] = send_email_notification(data, file_links)
-            
-            if not results['slack'] or not results['email']:
-                message = 'Submission succeeded, but one or more integrations failed. Please contact the treasurer.'
-            else:
-                message = 'Submission succeeded.'
-
-            return jsonify({
-                'message': message,
-                'details': results
-            }), 200
+        return jsonify({
+            'message': message,
+            'details': results
+        }), 200
                 
     except Exception as e:
         print(f"Error processing submission: {e}")
