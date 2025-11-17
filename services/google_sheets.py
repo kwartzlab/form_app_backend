@@ -26,7 +26,7 @@ def id_iterator(client, endpoint):
 
         if endpoint == "Reimbursement Request":
             if not id_column or len(id_column) == 0:
-                return (datetime.now().year * 10000) + 1
+                return [0]
             
             lastId = id_column[-1]  # Last value in column
             try:
@@ -34,16 +34,15 @@ def id_iterator(client, endpoint):
                 id_year = lastId_num // 10000
                 id_index = lastId_num % 10000
                 current_year = datetime.now().year
-                
                 if id_year < current_year:
-                    return ((current_year * 10000) + 1)
+                    return [1, ((current_year * 10000) + 1)]
                 else:
-                    return (current_year * 10000) + id_index + 1
+                    return [1, (current_year * 10000) + id_index + 1]
             except ValueError:
-                return (datetime.now().year * 10000) + 1
+                return [0]
         elif endpoint == "Purchase Approval":
             if not id_column or len(id_column) == 0:
-                return [-1]
+                return [0]
             lastId = id_column[-1]
             if lastId[:2] == "PA":      #valid format
                 try:
@@ -51,15 +50,15 @@ def id_iterator(client, endpoint):
                     newId_num = lastId_num + 1
                     return [1, f"PA{newId_num:04d}"]
                 except ValueError: # invalid integer after "PA"
-                    return [-1]
+                    return [0]
             else:
-                return [-1]
+                return [0]
         else:       #invalid endpoint
             print(f"Invalid endoint")
-            return [-1]
+            return [0]
     except Exception as e:
         print(f"Error accessing google sheet: {e}")
-        return [-1]            #if accessing google sheet failed, abort attempt
+        return [0]            #if accessing google sheet failed, abort attempt
 
 def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 for success
     try:
@@ -144,8 +143,8 @@ def add_to_google_sheet(endpoint, data, file_links):
         for expense in data['expenses']:
             row = buildrow(timestamp, endpoint, data, expense, file_links_str)
             rows.append(row)
-            
-        sheet.append_row(rows)
+
+        sheet.append_rows(rows)
         
         return True
     except Exception as e:
