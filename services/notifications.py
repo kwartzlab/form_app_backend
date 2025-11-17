@@ -9,6 +9,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 from config import Config
+from .utils import log_execution_time
 
 def render_email_template(template_name, **context):
     """Render email template with context"""
@@ -16,6 +17,7 @@ def render_email_template(template_name, **context):
         template = Template(f.read())
     return template.render(**context)
 
+@log_execution_time
 def send_slack_notification(data, file_links):
     """Send notification to Slack with file links"""
     # TODO generalize the slack notification function later. Right now, only the PA uses it
@@ -179,6 +181,7 @@ def email_builder(endpoint, data, file_links, email_type):
 
     return html_body
 
+@log_execution_time
 def send_email_notification(endpoint, data, file_links):
     """Send email notification with file links instead of attachments"""
     try:

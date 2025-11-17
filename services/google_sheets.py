@@ -4,46 +4,54 @@ import gspread
 
 from config import Config
 from .google_auth import get_credentials
+from .utils import log_execution_time
+
+_sheets_client = None
 
 def setup_google_sheets():
-    """Initialize Google Sheets API connection"""
+    """Initialize Google Sheets API connection with caching"""
+    global _sheets_client
     credentials = get_credentials()
+    if _sheets_client is None:
+        credentials = get_credentials()
+        _sheets_client = gspread.authorize(credentials)
+    return _sheets_client
 
-    client = gspread.authorize(credentials)
-    return client
-
-
+@log_execution_time
 def id_iterator(client, endpoint):
     try:
         sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1 
+
+        id_column = sheet.col_values(1)
+
         if endpoint == "Reimbursement Request":
-            numRows = len(sheet.col_values(1))
-            lastId = sheet.cell(numRows, 1).value
-            newId = 0
+            if not id_column or len(id_column) == 0:
+                return (datetime.now().year * 10000) + 1
+            
+            lastId = id_column[-1]  # Last value in column
             try:
                 lastId_num = int(lastId)
-                id_year = math.floor(lastId_num/10000)
-                id_index = lastId_num - (id_year * 10000)
+                id_year = lastId_num // 10000
+                id_index = lastId_num % 10000
                 current_year = datetime.now().year
+                
                 if id_year < current_year:
-                    newId = (current_year * 10000) + 1
+                    return ((current_year * 10000) + 1)
                 else:
-                    newId = (current_year * 10000) + id_index + 1 
-            except ValueError:          #either id field is invalid, or the sheet is empty. Restart numbering at current year
-                newId = (datetime.now().year * 10000) + 1
-            return [1, newId]
+                    return (current_year * 10000) + id_index + 1
+            except ValueError:
+                return (datetime.now().year * 10000) + 1
         elif endpoint == "Purchase Approval":
-            numRows = len(sheet.col_values(1))
-            lastId = sheet.cell(numRows, 1).value
-            newId = 0
+            if not id_column or len(id_column) == 0:
+                return [-1]
+            lastId = id_column[-1]
             if lastId[:2] == "PA":      #valid format
                 try:
                     lastId_num = int(lastId[2:])
+                    newId_num = lastId_num + 1
+                    return [1, f"PA{newId_num:04d}"]
                 except ValueError: # invalid integer after "PA"
                     return [-1]
-                newId_num = lastId_num + 1
-                newId = "PA" + f"{newId_num:04d}"
-                return [1, newId]
             else:
                 return [-1]
         else:       #invalid endpoint
@@ -60,8 +68,8 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
             print(f"Error with google sheet authentication")
             return 0
         sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1
-        existing = sheet.findall(str(id))
-        if existing:
+        id_column = sheet.col_values(1)
+        if str(id) in id_column:
             return -1
         else:
             return 1
@@ -69,6 +77,7 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
         print(f"Error accessing google sheet: {e}")
         return 0            #if accessing google sheet failed, abort attempt
 
+@log_execution_time
 def get_next_id_from_google_sheet(endpoint):
     try:
         client = setup_google_sheets()
@@ -119,13 +128,11 @@ def buildrow(timestamp, endpoint, data, expense, file_links_str):
         row = []
     return row
 
+@log_execution_time
 def add_to_google_sheet(endpoint, data, file_links):
     """Add reimbursement data to Google Sheet"""
     try:
         client = setup_google_sheets()
-        if not client:
-            return False
-        
         sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1       #todo: add additional error handling if this fails. Create new sheet with specified name, or just return error and exit as currently?
         
         # Prepare row data
@@ -133,9 +140,12 @@ def add_to_google_sheet(endpoint, data, file_links):
         file_links_str = ', '.join(file_links) if file_links else 'No attachments'
 
         # Add each expense as a separate row
+        rows = []
         for expense in data['expenses']:
             row = buildrow(timestamp, endpoint, data, expense, file_links_str)
-            sheet.append_row(row)
+            rows.append(row)
+            
+        sheet.append_row(rows)
         
         return True
     except Exception as e:

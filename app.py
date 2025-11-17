@@ -14,7 +14,9 @@ from services import get_next_id_from_google_sheet, add_to_google_sheet, \
         is_id_unused, send_email_notification, send_slack_notification, \
         upload_to_google_drive, delete_from_google_drive, \
         validate_form_data, validate_file, validate_total_file_size
+from services.utils import log_execution_time
 
+@log_execution_time
 def validate_config():
     """Check all required environment variables are set"""
     required = [
@@ -57,6 +59,7 @@ else:
         default_limits=[]
     )
 
+@log_execution_time
 def verify_hcaptcha(token):
     """Verify hCAPTCHA token"""
     try:
@@ -74,6 +77,7 @@ def verify_hcaptcha(token):
         print(f"Error verifying hCAPTCHA: {e}")
         return False
 
+@log_execution_time
 def validate_and_extract_input(endpoint, submissionReq):
     """
     Validate captcha, extract form data, validate files, and sanitize all inputs
@@ -123,6 +127,7 @@ def validate_and_extract_input(endpoint, submissionReq):
         print(f"Error processing submission: {e}")
         return [0, 'Internal server error', 500]
     
+@log_execution_time
 def build_return_message(results, endpoint):
     message = endpoint + ' Submission Succeeded'
     if not results['slack'] or not results['email']:
@@ -130,6 +135,7 @@ def build_return_message(results, endpoint):
     message = message + '.'
     return message
 
+@log_execution_time
 def core_submission(data, files, endpoint):
     """
     Process a submission: generate ID, validate and upload files, write to sheet
@@ -201,6 +207,7 @@ def core_submission(data, files, endpoint):
 
     return [1, results]
 
+@log_execution_time
 def submission_handler_with_retry(data, files, endpoint):
     """
     Handle submissions with retry logic for race conditions
@@ -239,6 +246,7 @@ def submission_handler_with_retry(data, files, endpoint):
 
 @app.route('/submit-PA', methods=['POST'])
 @limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
+@log_execution_time
 def submit_purchApproval():
     """Handle Purchase Approval submission"""
     endpoint = 'Purchase Approval'
@@ -272,6 +280,7 @@ def submit_purchApproval():
 
 @app.route('/submit', methods=['POST'])
 @limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
+@log_execution_time
 def submit_reimbursement():
     """Handle reimbursement submission"""
     endpoint = 'Reimbursement Request'
