@@ -2,3 +2,7 @@
 credentials.json
 venv/*
 *.pyc
+__pycache__/
+node_modules/
+build/
+.DS_Store
