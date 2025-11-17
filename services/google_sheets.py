@@ -1,5 +1,3 @@
-import os
-import json
 import math
 from datetime import datetime
 import gspread
@@ -55,6 +53,21 @@ def id_iterator(client, endpoint):
         print(f"Error accessing google sheet: {e}")
         return [-1]            #if accessing google sheet failed, abort attempt
 
+def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 for success
+    try:
+        client = setup_google_sheets()
+        if not client:
+            print(f"Error with google sheet authentication")
+            return 0
+        sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1
+        existing = sheet.findall(str(id))
+        if existing:
+            return -1
+        else:
+            return 1
+    except Exception as e:
+        print(f"Error accessing google sheet: {e}")
+        return 0            #if accessing google sheet failed, abort attempt
 
 def get_next_id_from_google_sheet(endpoint):
     try:
