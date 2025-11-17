@@ -5,6 +5,7 @@ load_dotenv()
 
 class Config:
     # Configuration - Set these as environment variables in Railway
+    FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
     SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
     SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
     SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))

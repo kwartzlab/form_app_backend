@@ -42,11 +42,20 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 MAX_RETRIES = 5
 
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
-)
+# Only enable rate limiting in production
+if Config.FLASK_ENV != 'development':
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per day", "50 per hour"]
+    )
+else:
+    # Create a disabled limiter for development
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=[]
+    )
 
 def verify_hcaptcha(token):
     """Verify hCAPTCHA token"""
