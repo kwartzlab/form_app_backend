@@ -226,10 +226,15 @@ def validate_form_data(endpoint, data):
             sanitized_expense['approval'] = result
             
             # Validate HST
-            valid, result = validate_decimal(expense.get('hst', 0), f'HST (expense {i})')
-            if not valid:
-                return False, result, None
-            sanitized_expense['hst'] = str(result)
+            hst_value = expense.get('hst', '')
+            valid_hst_options = [
+                'HST included in amount',
+                'HST excluded from amount',
+                'HST not charged'
+            ]
+            if hst_value not in valid_hst_options:
+                return False, f'Invalid HST value (expense {i})', None
+            sanitized_expense['hst'] = hst_value
         
         sanitized_expenses.append(sanitized_expense)
     
