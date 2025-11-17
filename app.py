@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import requests as req
 import random
@@ -11,7 +12,8 @@ from flask_limiter.util import get_remote_address
 from config import Config
 from services import get_next_id_from_google_sheet, add_to_google_sheet, \
         is_id_unused, send_email_notification, send_slack_notification, \
-        upload_to_google_drive, delete_from_google_drive
+        upload_to_google_drive, delete_from_google_drive, \
+        validate_form_data, validate_file, validate_total_file_size
 
 def validate_config():
     """Check all required environment variables are set"""
@@ -34,6 +36,9 @@ def validate_config():
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Add ProxyFix to properly handle X-Forwarded-For headers from Cloud Run
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 MAX_RETRIES = 5
 
@@ -61,16 +66,10 @@ def verify_hcaptcha(token):
         return False
 
 def validate_and_extract_input(endpoint, submissionReq):
-    # currently no need to apply different validation to different form types 
-    # since they have the same fields
-    schema = {
-        "Reimbursement Request": ['firstName', 'lastName', 'email', ['comments', ''], 'expenses'],
-        "Purchase Approval": ['firstName', 'lastName', 'email', ['comments', ''], 'expenses']
-    }
-    expenses_schema = {
-        "Reimbursement Request": ['approval', 'vendor', 'description', 'amount', 'hst'],
-        "Purchase Approval": ['vendor', 'description', 'amount']
-    }
+    """
+    Validate captcha, extract form data, validate files, and sanitize all inputs
+    Returns: [status, data/error_message, http_code]
+    """
     try:
         # Verify captcha first before doing anything else
         captcha_token = submissionReq.form.get('captchaToken')
@@ -80,29 +79,37 @@ def validate_and_extract_input(endpoint, submissionReq):
         if not verify_hcaptcha(captcha_token):
             return [0, 'Captcha verification failed. Please try again.', 400]
 
-        # extract form data
-        data = {}
-        for entry in schema[endpoint]:
-            if isinstance(entry, list):
-                data[entry[0]] = submissionReq.form.get(entry[0], entry[1])
+        # Extract form data
+        raw_data = {
+            'firstName': submissionReq.form.get('firstName'),
+            'lastName': submissionReq.form.get('lastName'),
+            'email': submissionReq.form.get('email'),
+            'comments': submissionReq.form.get('comments', ''),
+            'expenses': submissionReq.form.get('expenses')
+        }
+
+        # Parse expenses JSON
+        try:
+            if raw_data['expenses']:
+                raw_data['expenses'] = json.loads(raw_data['expenses'])
             else:
-                data[entry] = submissionReq.form.get(entry)
+                return [0, 'No expenses provided', 400]
+        except json.JSONDecodeError:
+            return [0, 'Invalid expenses data format', 400]
 
-        json_expenses = data['expenses']
-        data['expenses'] = json.loads(json_expenses)        #transform from json to list of dicts now instead of later
-
-        # Validate required fields
-        # TODO improve data validation to include type, not just being present
-        if not all([data['firstName'], data['lastName'], data['email'], data['expenses']]):
-            return [0, 'Missing required fields', 400]
+        # Validate and sanitize form data
+        valid, error_or_data, sanitized_data = validate_form_data(endpoint, raw_data)
+        if not valid:
+            return [0, error_or_data, 400]
         
-        if not all(
-            all(field in row and row[field] is not None for field in expenses_schema[endpoint])
-            for row in data.get('expenses', [])
-        ):
-            return [0, 'Missing required fields in expense line', 400]
+        # Validate total file size
+        if submissionReq.files:
+            valid, error = validate_total_file_size(submissionReq.files)
+            if not valid:
+                return [0, error, 400]
         
-        return [1, data]
+        return [1, sanitized_data]
+        
     except Exception as e:
         print(f"Error processing submission: {e}")
         return [0, 'Internal server error', 500]
@@ -115,58 +122,69 @@ def build_return_message(results, endpoint):
     return message
 
 def core_submission(data, files, endpoint):
-    # establish an ID for the submission, needed for file upload folder name as well as sheet entries
+    """
+    Process a submission: generate ID, validate and upload files, write to sheet
+    Returns: [status, data/error, http_code] where status: 1=success, 0=error, -1=race condition
+    """
+    # Establish an ID for the submission
     data['id'] = get_next_id_from_google_sheet(endpoint) 
     if data['id'] == 0:
         print(f"Error processing submission: could not access google sheet")
         return [0, 'Server Error: failed to access spreadsheet', 500]
     
-    # Upload files to Google Drive
-    """first element of return: 1 success, 0 error, -1 race condition was detected.
-    If the return is an error, the next two elements are a string of the error to return and 
-    the http code for the server to return.
-    If the return is a success, the second element is a dictionary reporting the status of 
-    the different endpoints the server is trying to hit.
-    If the return is -1, the calling function will use the fid_list to clean up the files uploaded by this function.
-    """
+    # Validate and upload files to Google Drive
     results = {}
     results['files_uploaded'] = {'len': 0, 'list': [], 'fid_list': []}
     uploaded_files = []
     folder_id = Config.GOOGLE_DRIVE_FOLDER[endpoint]
 
     uploadFailed = False
+    upload_errors = []
+    
     for key in files:
         file_data = files[key]
         if file_data.filename:
-            link, fid = upload_to_google_drive(file_data, file_data.filename, 
+            # Validate file
+            valid, error, safe_filename = validate_file(file_data, file_data.filename)
+            if not valid:
+                upload_errors.append(error)
+                uploadFailed = True
+                continue
+            
+            # Upload with sanitized filename
+            link, fid = upload_to_google_drive(file_data, safe_filename, 
                         request_id=data["id"], parent_folder_id=folder_id)
             if link:
                 uploaded_files.append({'fid': fid, 'link': link})
             else:
                 uploadFailed = True
+                upload_errors.append(f"Failed to upload {safe_filename}")
 
     if uploadFailed:
-        #delete files that were uploaded, then return error
+        # Delete files that were uploaded, then return error
         for file in uploaded_files:
             delete_from_google_drive(file['fid'])
-        print(f"Error processing submission: one or more file uploads failed")
-        return [0, 'Server Error: failed to upload one or more files', 500]
-    else:
-        # upload succeeded, pack files and file ids into results struct, throw length on for good measure
-        for file in uploaded_files:
-            results['files_uploaded']['list'].append(file['link'])
-            results['files_uploaded']['fid_list'].append(file['fid'])
-        results['files_uploaded']["len"] = len(results['files_uploaded']['list'])
+        error_msg = 'File upload failed: ' + '; '.join(upload_errors) if upload_errors else 'Server Error: failed to upload one or more files'
+        print(f"Error processing submission: {error_msg}")
+        return [0, error_msg, 400]
+    
+    # Pack files and file ids into results struct
+    for file in uploaded_files:
+        results['files_uploaded']['list'].append(file['link'])
+        results['files_uploaded']['fid_list'].append(file['fid'])
+    results['files_uploaded']["len"] = len(results['files_uploaded']['list'])
 
+    # Check for race condition
     unique_id = is_id_unused(endpoint, data["id"])
-    if unique_id > 0:                   # no race condition, submission handler can proceed
+    if unique_id > 0:  # No race condition, proceed
         results['google_sheet'] = add_to_google_sheet(endpoint, data, results['files_uploaded']['list'])
-    elif unique_id == 0:                # some other error, return to user
+    elif unique_id == 0:  # Connection error
         return [0, "Connection to Google Sheet failed", 500]
-    else:                               # race condition occurred, report to submission handler
-        return [-1, results]            
+    else:  # Race condition occurred
+        return [-1, results]
 
-    if not results['google_sheet']:     # id was fine, but writing to sheet failed for some other reason. delete files that were uploaded, then return error
+    if not results['google_sheet']:
+        # ID was fine but writing to sheet failed - delete uploaded files
         for file in uploaded_files:
             delete_from_google_drive(file['fid'])
         print(f"Error processing submission: failed to record entry in google sheet")
@@ -175,40 +193,45 @@ def core_submission(data, files, endpoint):
     return [1, results]
 
 def submission_handler_with_retry(data, files, endpoint):
-    """process flow has a small gap between when an id is grabbed and new line with that id is uploaded to spreadsheet, 
-    meaning a potential race condition. This block calls for a check for the calculated id immediately before the call 
-    to write to the spreadsheet. If the id is found in the spreadsheet, the function cleans up the uploaded files, then
-    causes this block to wait for a bit and try again (up to 5 times)."""
+    """
+    Handle submissions with retry logic for race conditions
+    Returns: [status, data/error, http_code]
+    """
     race_condition = True
     counter = 0
+    
     while race_condition:
         try:
             submission_results = core_submission(data, files, endpoint)
         except Exception as e:
             print(f"Error when writing to google sheet: {e}")
             return [0, "Internal Server Error", 500]
+            
         if submission_results[0] > 0:
             race_condition = False
             results = submission_results[1]
         elif submission_results[0] == 0:
             return submission_results
-        else:                   # race condition occurred, cleanup and wait, or exit after 5 tries
+        else:  # Race condition occurred
             counter += 1
             results = submission_results[1]
+            # Clean up uploaded files
             for file in results['files_uploaded']['fid_list']:
                 delete_from_google_drive(file['fid'])
+            
             if counter < MAX_RETRIES:
                 wait_time = (2 ** counter) + random.random()
                 time.sleep(wait_time)
             else:
-                print(f"Error when accessing Google Sheet")
+                print(f"Error when accessing Google Sheet: max retries exceeded")
                 return [0, "Internal Server Error", 500]
+                
     return submission_results
 
 @app.route('/submit-PA', methods=['POST'])
 @limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
 def submit_purchApproval():
-    """Handle Purcahse Approval submission"""
+    """Handle Purchase Approval submission"""
     endpoint = 'Purchase Approval'
     try:
         validation_result = validate_and_extract_input(endpoint, request)
@@ -222,7 +245,8 @@ def submit_purchApproval():
         results = submission_results[1]
         file_links = results["files_uploaded"]["list"]
             
-        # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
+        # If we haven't returned before this point, submission is successful
+        # Try to run slack and email integrations
         results['slack'] = send_slack_notification(data, file_links)
         results['email'] = send_email_notification(endpoint, data, file_links)
         
@@ -254,8 +278,9 @@ def submit_reimbursement():
         results = submission_results[1]
         file_links = results["files_uploaded"]["list"]
 
-        # If we haven't returned before this point, submission is successful. Try to run slack and email integrations
-        results['slack'] = True         #we currently only bother sending PAs to a channel
+        # If we haven't returned before this point, submission is successful
+        # Try to run email integration (no Slack for RR currently)
+        results['slack'] = True  # We currently only bother sending PAs to a channel
         results['email'] = send_email_notification(endpoint, data, file_links)
         
         message = build_return_message(results, endpoint)
