@@ -95,7 +95,7 @@ def send_slack_notification(data, file_links):
                 }
             })
         
-        response = requests.post(Config.SLACK_WEBHOOK_URL, json=message)
+        response = requests.post(Config.SLACK_WEBHOOK_URL, json=message, timeout=10)
         return response.status_code == 200
     except Exception as e:
         print(f"Error sending Slack notification: {e}")
@@ -141,7 +141,7 @@ HST: {exp.get('hst', 'N/A')}
 
 def email_builder(endpoint, data, file_links, email_type):
     form_specific = {
-        "Reibursement Request": {
+        "Reimbursement Request": {
             "blurb": f"Thank you for submitting your request! Our Treasurer will be in touch shortly.",
             "list_template": f'email_reimbursement.html',
             "ack_template": f'email_thank_you.html'
@@ -212,11 +212,22 @@ def send_email_notification(endpoint, data, file_links):
         server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
         server.starttls()
         server.login(Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD)
-        server.send_message(list_msg)
-        server.send_message(ack_msg)
-        server.quit()
+        list_sent = False
+        ack_sent = False
         
-        return True
-    except Exception as e:              # TODO handle case where one email succeeds and the other fails
+        try:
+            server.send_message(list_msg)
+            list_sent = True
+        except Exception as e:
+            print(f"Failed to send list notification: {e}")
+        try:
+            server.send_message(ack_msg)
+            ack_sent = True
+        except Exception as e:
+            print(f"Failed to send acknowledgement: {e}")
+            
+        server.quit()
+        return list_sent or ack_sent
+    except Exception as e:
         print(f"Error sending email: {e}")
         return False

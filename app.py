@@ -2,14 +2,38 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import requests as req
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from config import Config
 from services import get_next_id_from_google_sheet, add_to_google_sheet, send_email_notification, send_slack_notification
 from services import upload_to_google_drive, delete_from_google_drive
 
+def validate_config():
+    """Check all required environment variables are set"""
+    required = [
+        'CAPTCHA_SECRET',
+        'EMAIL_ADDRESS',
+        'EMAIL_PASSWORD',
+        'RECIPIENT_EMAIL',
+        'RR_SHEET_NAME',
+        'PA_SHEET_NAME'
+    ]
+    
+    missing = [var for var in required if not os.environ.get(var)]
+    
+    if missing:
+        # logger.error(f"Missing required environment variables: {missing}")    #TODO implement proper logging
+        print("Missing environment variables")
+        raise EnvironmentError(f"Missing: {', '.join(missing)}")
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
 
 def verify_hcaptcha(token):
     """Verify hCAPTCHA token"""
@@ -19,7 +43,8 @@ def verify_hcaptcha(token):
             data={
                 'secret': Config.HCAPTCHA_SECRET_KEY,
                 'response': token
-            }
+            },
+            timeout=5
         )
         result = response.json()
         return result.get('success', False)
@@ -103,6 +128,7 @@ def build_return_message(results, endpoint):
     return message
 
 @app.route('/submit-PA', methods=['POST'])
+@limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
 def submit_purchApproval():
     """Handle Purcahse Approval submission"""
     endpoint = 'Purchase Approval'
@@ -142,8 +168,8 @@ def submit_purchApproval():
         print(f"Error processing Purchase Approval submission: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
-
 @app.route('/submit', methods=['POST'])
+@limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
 def submit_reimbursement():
     """Handle reimbursement submission"""
     endpoint = 'Reimbursement Request'
@@ -191,5 +217,6 @@ def health_check():
     return jsonify({'status': 'healthy'}), 200
 
 if __name__ == '__main__':
+    validate_config()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

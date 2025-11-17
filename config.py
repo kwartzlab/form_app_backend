@@ -20,3 +20,4 @@ class Config:
         "Reimbursement Request": os.environ.get('RR_GOOGLE_DRIVE_FOLDER_ID'),
         "Purchase Approval": os.environ.get('PA_GOOGLE_DRIVE_FOLDER_ID'),
     }
+    ORGANIZATION_DOMAIN = os.environ.get('ORGANIZATION_DOMAIN')

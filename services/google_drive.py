@@ -80,7 +80,7 @@ def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=Non
             permission = {
                 'type': 'domain',
                 'role': 'reader',
-                'domain': 'kwartzlab.ca'
+                'domain': Config.ORGANIZATION_DOMAIN
             }
             try:
                 service.permissions().create(
@@ -116,7 +116,7 @@ def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=Non
         permission = {
             'type': 'domain',
             'role': 'reader',
-            'domain': 'kwartzlab.ca'
+            'domain': Config.ORGANIZATION_DOMAIN
         }
         try:
             service.permissions().create(
@@ -127,7 +127,7 @@ def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=Non
         except Exception as e:
             print(f"Error editing file permissions: {e}")
         
-        return file.get('webViewLink')
+        return file.get('webViewLink'), file.get('id')
         
     except Exception as e:
         print(f"Error uploading to Google Drive: {e}")
