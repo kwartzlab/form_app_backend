@@ -131,10 +131,9 @@ def add_to_google_sheet(endpoint, data, file_links):
         # Prepare row data
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         file_links_str = ', '.join(file_links) if file_links else 'No attachments'
-        expenses = json.loads(data['expenses'])
 
         # Add each expense as a separate row
-        for expense in expenses:
+        for expense in data['expenses']:
             row = buildrow(timestamp, endpoint, data, expense, file_links_str)
             sheet.append_row(row)
         
