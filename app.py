@@ -21,9 +21,10 @@ def validate_config():
     """Check all required environment variables are set"""
     required = [
         'CAPTCHA_SECRET',
-        'EMAIL_ADDRESS',
+        'DEV_OUTBOUND_EMAIL_ADDRESS' if Config.FLASK_ENV == "development" else 'OUTBOUND_EMAIL_ADDRESS',
         'EMAIL_PASSWORD',
-        'RECIPIENT_EMAIL',
+        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'RR_RECIPIENT_EMAIL',
+        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'PA_RECIPIENT_EMAIL',
         'RR_SHEET_NAME',
         'PA_SHEET_NAME'
     ]

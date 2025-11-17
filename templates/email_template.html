@@ -16,10 +16,22 @@
     </style>
 </head>
 <body>
-    <h2>{{form_type}} Received</h2>
-    <p>Hi {{ first_name }}</p>
-    <p>{{ thanks_blurb }}</p>
-    <p>Here is a record of your submission:</p>
+    <h2>{% if email_type == 'acknowledgment' %}{{ form_type }} Received{% else %}New {{ form_type }}{% endif %}</h2>
+    
+    {% if email_type == 'acknowledgment' %}
+        <p>Hi {{ first_name }},</p>
+        <p>{{ message }}</p>
+        <p>Here is a record of your submission:</p>
+    {% else %}
+        {% if form_type == 'Reimbursement Request' %}
+            <p>A reimbursement request has been submitted.</p>
+            <p>This email is for information only; reimbursement requests should already be approved unless they are under $50 or submitted by a team or project lead. The Treasurer will notify the board if additional +1s are required.</p>
+        {% elif form_type == 'Purchase Approval' %}
+            <p>A purchasing approval request has been submitted.</p>
+            <p>Members are free to ask questions (or vote) on this purchase approval. +1's from at least 5 of 7 Board members are required to approve the request on this list. If the request does not receive enough +1's, it will be addressed at the next Board Meeting.</p>
+            <p>As of October 2025, voting for purchase approvals has been moved to slack. Please visit #purchase-approvals.</p>
+        {% endif %}
+    {% endif %}
     
     <div class="header">
         <p><strong>Submitted by:</strong> {{ first_name }} {{ last_name }}</p>
@@ -31,19 +43,29 @@
     <table>
         <thead>
             <tr>
+                {% if form_type == 'Reimbursement Request' %}
+                    <th>Approval/Project</th>
+                {% endif %}
                 <th>Vendor</th>
                 <th>Description</th>
                 <th>Amount</th>
-                <th>HST</th>
+                {% if form_type == 'Reimbursement Request' %}
+                    <th>HST</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
             {% for expense in expenses %}
             <tr>
+                {% if form_type == 'Reimbursement Request' %}
+                    <td>{{ expense.approval or 'N/A' }}</td>
+                {% endif %}
                 <td>{{ expense.vendor or 'N/A' }}</td>
                 <td>{{ expense.description or 'N/A' }}</td>
                 <td style="text-align: right;">${{ expense.amount or '0' }}</td>
-                <td>{{ expense.hst or 'N/A' }}</td>
+                {% if form_type == 'Reimbursement Request' %}
+                    <td>{{ expense.hst or 'N/A' }}</td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>

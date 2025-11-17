@@ -142,33 +142,26 @@ HST: {exp.get('hst', 'N/A')}
     return plain_body
 
 def email_builder(endpoint, data, file_links, email_type):
+    """Build email HTML from unified template"""
     form_specific = {
         "Reimbursement Request": {
-            "blurb": f"Thank you for submitting your request! Our Treasurer will be in touch shortly.",
-            "list_template": f'email_reimbursement.html',
-            "ack_template": f'email_thank_you.html'
+            "message": "Thank you for submitting your request! Our Treasurer will be in touch shortly."
         },
         "Purchase Approval": {
-            "blurb": f"Thank you for submitting your purchase approval request! Remember to keep an eye on the member's list for questions and +1s from the Board.",
-            "list_template": f'email_purchase_approval.html',
-            "ack_template": f'email_thank_you.html'
+            "message": "Thank you for submitting your purchase approval request! Remember to keep an eye on the member's list for questions and +1s from the Board."
         }
     }
 
-    if email_type == "thanks":
-        template = form_specific[endpoint]["ack_template"]
-    elif email_type == "list":
-        template = form_specific[endpoint]["list_template"]
-    else:
-        print("invalid template")
-        return 0
-
-    # Email body
-    expenses = data['expenses']
+    # Calculate total
+    expenses = data['expenses']  # Already parsed as list of dicts
     total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
+    
+    # Render unified template
     html_body = render_email_template(
-        template,
-        thanks_blurb=form_specific[endpoint]["blurb"],
+        'email_template.html',
+        email_type=email_type,
+        form_type=endpoint,
+        message=form_specific[endpoint]["message"],
         first_name=data['firstName'],
         last_name=data['lastName'],
         email=data['email'],
@@ -185,36 +178,37 @@ def email_builder(endpoint, data, file_links, email_type):
 def send_email_notification(endpoint, data, file_links):
     """Send email notification with file links instead of attachments"""
     try:
-        if not all([Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD, Config.RECIPIENT_EMAIL]):
+        sender_email = Config.DEV_OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == "development" else Config.OUTBOUND_EMAIL_ADDRESS
+        if not all([sender_email, Config.EMAIL_PASSWORD]):
             print("Warning: Email credentials not fully configured")
             return False
+        
+        recipient_email = Config.DEV_RECIPIENT_EMAIL if Config.FLASK_ENV == "development" else Config.RECIPIENT_EMAIL[endpoint]
+        if not recipient_email:
+            print(f"Warning: No recipient email configured for {endpoint}")
+            return False
 
-        # Render HTML email from template
+        # Render both emails from unified template
         list_notify_html_body = email_builder(endpoint, data, file_links, "list")
-        thanks_html_body = email_builder(endpoint, data, file_links, "thanks")
+        thanks_html_body = email_builder(endpoint, data, file_links, "acknowledgment")
 
-        # Create message for mailing list
+        # Create both messages
         list_msg = MIMEMultipart('alternative')
-        list_msg['From'] = Config.EMAIL_ADDRESS
-        list_msg['To'] = Config.RECIPIENT_EMAIL
+        list_msg['From'] = sender_email
+        list_msg['To'] = recipient_email
         list_msg['Subject'] = f"New {endpoint} - {data['firstName']} {data['lastName']}"
+        list_msg.attach(MIMEText(list_notify_html_body, 'html'))
 
-        # Create acknowledgement message
         ack_msg = MIMEMultipart('alternative')
-        ack_msg['From'] = Config.EMAIL_ADDRESS
+        ack_msg['From'] = sender_email
         ack_msg['To'] = data["email"]
         ack_msg['Subject'] = f"New {endpoint} - {data['firstName']} {data['lastName']}"
-
-        # Attach both plain text and HTML versions
-        # plain_body = build_plain_message(data, file_links)
-        # msg.attach(MIMEText(plain_body, 'plain'))
-        list_msg.attach(MIMEText(list_notify_html_body, 'html'))
         ack_msg.attach(MIMEText(thanks_html_body, 'html'))
         
-        # Send email
         server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
         server.starttls()
-        server.login(Config.EMAIL_ADDRESS, Config.EMAIL_PASSWORD)
+        server.login(sender_email, Config.EMAIL_PASSWORD)
+        
         list_sent = False
         ack_sent = False
         
