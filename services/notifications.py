@@ -24,7 +24,7 @@ def send_slack_notification(data, file_links):
             print("Warning: SLACK_WEBHOOK_URL not set")
             return False
         
-        expenses = json.loads(data['expenses'])
+        expenses = data['expenses']
         total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
         
         # Format expenses for Slack
@@ -162,7 +162,7 @@ def email_builder(endpoint, data, file_links, email_type):
         return 0
 
     # Email body
-    expenses = json.loads(data['expenses'])
+    expenses = data['expenses']
     total = sum(float(exp.get('amount', 0) or 0) for exp in expenses)
     html_body = render_email_template(
         template,
