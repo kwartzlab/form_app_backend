@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv
+*.env
+.env
+credentials.json
+*.log
+.git
+.gitignore
+README.md
+```
+
+**4. Verify `.gitignore`** includes:
+```
+credentials.json
+.env
+__pycache__/
+*.pyc
