@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
@@ -15,6 +15,8 @@ from services import get_next_id_from_google_sheet, add_to_google_sheet, \
         upload_to_google_drive, delete_from_google_drive, \
         validate_form_data, validate_file, validate_total_file_size
 from services.utils import log_execution_time
+from services.logger import setup_logger, logger, RequestIDFilter
+import uuid
 
 @log_execution_time
 def validate_config():
@@ -33,11 +35,22 @@ def validate_config():
     
     if missing:
         #TODO implement proper logging
-        # logger.error(f"Missing required environment variables: {missing}")    
-        print("Missing environment variables")
+        logger.error(f"Missing required environment variables: {missing}")    
         raise EnvironmentError(f"Missing: {', '.join(missing)}")
 
 app = Flask(__name__)
+setup_logger()          # initialize logging
+logger.addFilter(RequestIDFilter())
+
+@app.before_request
+def set_request_id():
+    g.request_id = str(uuid.uuid4())
+    logger.info("Incoming request", extra={
+        'method': request.method,
+        'path': request.path,
+        'remote_addr': request.remote_addr
+    })
+
 CORS(app)  # Enable CORS for all routes
 
 # Add ProxyFix to properly handle X-Forwarded-For headers from Cloud Run
@@ -75,7 +88,8 @@ def verify_hcaptcha(token):
         result = response.json()
         return result.get('success', False)
     except Exception as e:
-        print(f"Error verifying hCAPTCHA: {e}")
+        logger.error("Error Occurred", extra={'error verifying hCAPTCHA':str(e)}, exc_info=True)
+        # print(f"Error verifying hCAPTCHA: {e}")
         return False
 
 @log_execution_time
@@ -125,7 +139,8 @@ def validate_and_extract_input(endpoint, submissionReq):
         return [1, sanitized_data]
         
     except Exception as e:
-        print(f"Error processing submission: {e}")
+        # print(f"Error processing submission: {e}")
+        logger.error("Error Occurred", extra={'error processing submission':str(e)}, exc_info=True)
         return [0, 'Internal server error', 500]
     
 @log_execution_time
@@ -181,7 +196,8 @@ def core_submission(data, files, endpoint):
         for file in uploaded_files:
             delete_from_google_drive(file['fid'])
         error_msg = 'File upload failed: ' + '; '.join(upload_errors) if upload_errors else 'Server Error: failed to upload one or more files'
-        print(f"Error processing submission: {error_msg}")
+        # print(f"Error processing submission: {error_msg}")
+        logger.error("Error Occurred", extra={'error processing submission':str(e)}, exc_info=True)
         return [0, error_msg, 400]
     
     # Pack files and file ids into results struct
@@ -203,7 +219,8 @@ def core_submission(data, files, endpoint):
         # ID was fine but writing to sheet failed - delete uploaded files
         for file in uploaded_files:
             delete_from_google_drive(file['fid'])
-        print(f"Error processing submission: failed to record entry in google sheet")
+        # print(f"Error processing submission: failed to record entry in google sheet")
+        logger.error(f"Error processing submission: failed to record entry in google sheet")
         return [0, 'Server Error: failed to record entry in google sheet', 500]
 
     return [1, results]
@@ -221,7 +238,8 @@ def submission_handler_with_retry(data, files, endpoint):
         try:
             submission_results = core_submission(data, files, endpoint)
         except Exception as e:
-            print(f"Error when writing to google sheet: {e}")
+            # print(f"Error when writing to google sheet: {e}")
+            logger.error("Error Occurred", extra={'error when writing to google sheet':str(e)}, exc_info=True)
             return [0, "Internal Server Error", 500]
             
         if submission_results[0] > 0:
@@ -240,7 +258,8 @@ def submission_handler_with_retry(data, files, endpoint):
                 wait_time = (2 ** counter) + random.random()
                 time.sleep(wait_time)
             else:
-                print(f"Error when accessing Google Sheet: max retries exceeded")
+                # print(f"Error when accessing Google Sheet: max retries exceeded")
+                logger.error(f"Error when accessing Google Sheet: max retries exceeded")
                 return [0, "Internal Server Error", 500]
                 
     return submission_results
@@ -276,7 +295,8 @@ def submit_purchApproval():
         }), 200
 
     except Exception as e:
-        print(f"Error processing Purchase Approval submission: {e}")
+        # print(f"Error processing Purchase Approval submission: {e}")
+        logger.error("Error Occurred", extra={'error processing Purchase Approval submission':str(e)}, exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/submit', methods=['POST'])
@@ -310,7 +330,8 @@ def submit_reimbursement():
         }), 200
                 
     except Exception as e:
-        print(f"Error processing Reimbursement Request submission: {e}")
+        # print(f"Error processing Reimbursement Request submission: {e}")
+        logger.error("Error Occurred", extra={'error processing Reimbursement Request submission':str(e)}, exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health', methods=['GET'])

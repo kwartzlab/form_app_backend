@@ -8,6 +8,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from config import Config
 from .google_auth import get_credentials
 from .utils import log_execution_time
+from services.logger import logger
 
 _folder_cache = {}
 
@@ -31,7 +32,8 @@ def delete_from_google_drive(file_id):
         return True
         
     except Exception as e:
-        print(f"Error deleting file from Google Drive: {e}")
+        # print(f"Error deleting file from Google Drive: {e}")
+        logger.error("Error Occurred", extra={'error deleting file from google drive':str(e)}, exc_info=True)
         return False
 
 @log_execution_time
@@ -134,5 +136,6 @@ def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=Non
         return file.get('webViewLink'), file.get('id')
         
     except Exception as e:
-        print(f"Error uploading to Google Drive: {e}")
+        # print(f"Error uploading to Google Drive: {e}")
+        logger.error("Error Occurred", extra={'error uploading to google drive':str(e)}, exc_info=True)
         return None

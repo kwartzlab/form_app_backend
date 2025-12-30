@@ -10,6 +10,7 @@ from email import encoders
 
 from config import Config
 from .utils import log_execution_time
+from services.logger import logger
 
 def render_email_template(template_name, **context):
     """Render email template with context"""
@@ -23,7 +24,8 @@ def send_slack_notification(data, file_links):
     # TODO generalize the slack notification function later. Right now, only the PA uses it
     try:
         if not Config.SLACK_WEBHOOK_URL:
-            print("Warning: SLACK_WEBHOOK_URL not set")
+            logger.warning("SLACK_WEBHOOK_URL not set")
+            # print("Warning: SLACK_WEBHOOK_URL not set")
             return False
         
         expenses = data['expenses']
@@ -100,7 +102,8 @@ def send_slack_notification(data, file_links):
         response = requests.post(Config.SLACK_WEBHOOK_URL, json=message, timeout=10)
         return response.status_code == 200
     except Exception as e:
-        print(f"Error sending Slack notification: {e}")
+        # print(f"Error sending Slack notification: {e}")
+        logger.error("Error Occurred", extra={'error sending slack notification':str(e)}, exc_info=True)
         return False
 
 def build_plain_message(data, file_links):
@@ -180,12 +183,14 @@ def send_email_notification(endpoint, data, file_links):
     try:
         sender_email = Config.DEV_OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == "development" else Config.OUTBOUND_EMAIL_ADDRESS
         if not all([sender_email, Config.EMAIL_PASSWORD]):
-            print("Warning: Email credentials not fully configured")
+            # print("Warning: Email credentials not fully configured")
+            logger.warning("Email credentials not fully configured")
             return False
         
         recipient_email = Config.DEV_RECIPIENT_EMAIL if Config.FLASK_ENV == "development" else Config.RECIPIENT_EMAIL[endpoint]
         if not recipient_email:
-            print(f"Warning: No recipient email configured for {endpoint}")
+            # print(f"Warning: No recipient email configured for {endpoint}")
+            logger.warning(f"Warning: No recipient email configured for {endpoint}")
             return False
 
         # Render both emails from unified template
@@ -216,15 +221,18 @@ def send_email_notification(endpoint, data, file_links):
             server.send_message(list_msg)
             list_sent = True
         except Exception as e:
-            print(f"Failed to send list notification: {e}")
+            # print(f"Failed to send list notification: {e}")
+            logger.exception("Exception Occurred", extra={'failed to send list notification':str(e)}, exc_info=True)
         try:
             server.send_message(ack_msg)
             ack_sent = True
         except Exception as e:
-            print(f"Failed to send acknowledgement: {e}")
+            # print(f"Failed to send acknowledgement: {e}")
+            logger.exception("Exception Occurred", extra={'failed to send acknowledgement':str(e)}, exc_info=True)
             
         server.quit()
         return list_sent or ack_sent
     except Exception as e:
         print(f"Error sending email: {e}")
+        logger.error("Error Occurred", extra={'error sending email':str(e)}, exc_info=True)
         return False

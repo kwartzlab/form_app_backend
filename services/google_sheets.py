@@ -5,6 +5,7 @@ import gspread
 from config import Config
 from .google_auth import get_credentials
 from .utils import log_execution_time
+from services.logger import logger
 
 _sheets_client = None
 
@@ -54,17 +55,21 @@ def id_iterator(client, endpoint):
             else:
                 return [0]
         else:       #invalid endpoint
-            print(f"Invalid endoint")
+            # print(f"Invalid endoint")
+            logger.warning("Invalid Endpoint")
             return [0]
     except Exception as e:
-        print(f"Error accessing google sheet: {e}")
+        # print(f"Error accessing google sheet: {e}")
+        logger.exception("Exception Occurred", extra={'failed to access google sheet':str(e)}, exc_info=True)
+
         return [0]            #if accessing google sheet failed, abort attempt
 
 def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 for success
     try:
         client = setup_google_sheets()
         if not client:
-            print(f"Error with google sheet authentication")
+            # print(f"Error with google sheet authentication")
+            logger.error("Error with google sheet authentication")
             return 0
         sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1
         id_column = sheet.col_values(1)
@@ -73,7 +78,8 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
         else:
             return 1
     except Exception as e:
-        print(f"Error accessing google sheet: {e}")
+        # print(f"Error accessing google sheet: {e}")
+        logger.exception("Exception Occurred", extra={'error accessing google sheet':str(e)}, exc_info=True)
         return 0            #if accessing google sheet failed, abort attempt
 
 @log_execution_time
@@ -81,7 +87,8 @@ def get_next_id_from_google_sheet(endpoint):
     try:
         client = setup_google_sheets()
         if not client:
-            print(f"Error with google sheet authentication")
+            logger.error("Error with google sheet authentication")
+            # print(f"Error with google sheet authentication")
             return 0
         
         newId = id_iterator(client, endpoint)
@@ -90,7 +97,8 @@ def get_next_id_from_google_sheet(endpoint):
         else:
             raise ValueError("invalid ID")
     except Exception as e:
-        print(f"Error accessing google sheet: {e}")
+        logger.exception("Exception Occurred", extra={'error accessing google sheet':str(e)}, exc_info=True)
+        # print(f"Error accessing google sheet: {e}")
         return 0            #if accessing google sheet failed, abort attempt
     
 def buildrow(timestamp, endpoint, data, expense, file_links_str):
@@ -123,7 +131,8 @@ def buildrow(timestamp, endpoint, data, expense, file_links_str):
             data.get('comments', '')
         ]
     else:
-        print ("invalid endpoint, returning empty row")
+        logger.warning("invalid endpoint, returning empty row")
+        # print ("invalid endpoint, returning empty row")
         row = []
     return row
 
@@ -148,5 +157,6 @@ def add_to_google_sheet(endpoint, data, file_links):
         
         return True
     except Exception as e:
-        print(f"Error adding to Google Sheet: {e}")
+        # print(f"Error adding to Google Sheet: {e}")
+        logger.error("Error Occurred", extra={'error adding to google sheet':str(e)}, exc_info=True)
         return False
