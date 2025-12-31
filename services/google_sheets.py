@@ -21,7 +21,8 @@ def setup_google_sheets():
 @log_execution_time
 def id_iterator(client, endpoint):
     try:
-        sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1 
+        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
+        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint]) 
 
         id_column = sheet.col_values(1)
 
@@ -71,7 +72,8 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
             # print(f"Error with google sheet authentication")
             logger.error("Error with google sheet authentication")
             return 0
-        sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1
+        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
+        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint])
         id_column = sheet.col_values(1)
         if str(id) in id_column:
             return -1
@@ -141,7 +143,8 @@ def add_to_google_sheet(endpoint, data, file_links):
     """Add reimbursement data to Google Sheet"""
     try:
         client = setup_google_sheets()
-        sheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint]).sheet1       #todo: add additional error handling if this fails. Create new sheet with specified name, or just return error and exit as currently?
+        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
+        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint])      #todo: add additional error handling if this fails. Create new sheet with specified name, or just return error and exit as currently?
         
         # Prepare row data
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

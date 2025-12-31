@@ -17,6 +17,10 @@ class Config:
         "Reimbursement Request": os.environ.get('RR_SHEET_NAME'),
         "Purchase Approval": os.environ.get('PA_SHEET_NAME')
     }
+    GOOGLE_WORKSHEET_NAME = {
+        'reimbursement': os.environ.get('RR_WORKSHEET_NAME'),
+        'purchase-approval': os.environ.get('PA_WORKSHEET_NAME')
+    }
     HCAPTCHA_SECRET_KEY = os.environ.get('CAPTCHA_SECRET')
     GOOGLE_DRIVE_FOLDER = {
         "Reimbursement Request": os.environ.get('RR_GOOGLE_DRIVE_FOLDER_ID'),
