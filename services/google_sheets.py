@@ -18,11 +18,18 @@ def setup_google_sheets():
         _sheets_client = gspread.authorize(credentials)
     return _sheets_client
 
+def get_worksheet(client, endpoint):
+    spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
+    logger.info("accessed spreadsheet")
+    sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint]) 
+    logger.info("accessed worksheet")
+
+    return sheet
+
 @log_execution_time
 def id_iterator(client, endpoint):
     try:
-        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
-        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint]) 
+        sheet = get_worksheet(client, endpoint)
 
         id_column = sheet.col_values(1)
 
@@ -72,8 +79,7 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
             # print(f"Error with google sheet authentication")
             logger.error("Error with google sheet authentication")
             return 0
-        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
-        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint])
+        sheet = get_worksheet(client, endpoint)
         id_column = sheet.col_values(1)
         if str(id) in id_column:
             return -1
@@ -86,6 +92,7 @@ def is_id_unused(endpoint, id):     # returns -1 for collision, 0 for error, 1 f
 
 @log_execution_time
 def get_next_id_from_google_sheet(endpoint):
+    logger.info("attempting to retrieve next id from google sheet")
     try:
         client = setup_google_sheets()
         if not client:
@@ -143,8 +150,7 @@ def add_to_google_sheet(endpoint, data, file_links):
     """Add reimbursement data to Google Sheet"""
     try:
         client = setup_google_sheets()
-        spreadsheet = client.open(Config.GOOGLE_SHEET_NAME[endpoint])
-        sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint])      #todo: add additional error handling if this fails. Create new sheet with specified name, or just return error and exit as currently?
+        sheet = get_worksheet(client, endpoint)     #todo: add additional error handling if this fails. Create new sheet with specified name, or just return error and exit as currently?
         
         # Prepare row data
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
