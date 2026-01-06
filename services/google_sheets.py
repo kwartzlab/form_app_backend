@@ -12,9 +12,11 @@ _sheets_client = None
 def setup_google_sheets():
     """Initialize Google Sheets API connection with caching"""
     global _sheets_client
-    credentials = get_credentials()
+    delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS
+    credentials = get_credentials(delegate_to=delegate)
     if _sheets_client is None:
-        credentials = get_credentials()
+        delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS
+        credentials = get_credentials(delegate_to=delegate)
         _sheets_client = gspread.authorize(credentials)
     return _sheets_client
 

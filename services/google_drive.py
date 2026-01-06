@@ -15,7 +15,8 @@ _folder_cache = {}
 @log_execution_time
 def delete_from_google_drive(file_id):
     try:
-        credentials = get_credentials()
+        delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS #todo: refactor, move this inside get_credentials?
+        credentials = get_credentials(delegate_to=delegate)
         
         # Build Drive API service
         service = build('drive', 'v3', credentials=credentials)
@@ -40,7 +41,8 @@ def delete_from_google_drive(file_id):
 def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=None):
     """Upload file to Google Drive in a request-specific subfolder and return shareable link"""
     try:
-        credentials = get_credentials()
+        delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS
+        credentials = get_credentials(delegate_to=delegate)
         service = build('drive', 'v3', credentials=credentials)
         supports_all_drives = {'supportsAllDrives': True}
         

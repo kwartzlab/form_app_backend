@@ -4,7 +4,7 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from .utils import log_execution_time
 
-def get_credentials():
+def get_credentials(delegate_to=None):
     scope = ['https://spreadsheets.google.com/feeds',
             'https://www.googleapis.com/auth/drive']
 
@@ -14,5 +14,9 @@ def get_credentials():
         credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     else:
         credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+
+    # Add delegation if specified
+    if delegate_to:
+        credentials = credentials.create_delegated(delegate_to)
 
     return credentials
