@@ -25,7 +25,15 @@ setup_logger()          # initialize logging
 logger.addFilter(RequestIDFilter())
 logger.info("TEST: Logger is working")
 
-CORS(app)  # Enable CORS for all routes
+CORS(app)
+#CORS(app, resources={
+#    r"/api/*": {
+#        "origins": [
+#            "https://forms.kwartzlab.ca",
+#            "http://localhost:3000",  # Keep for local testing
+#        ]
+#    }
+#})
 
 # Add ProxyFix to properly handle X-Forwarded-For headers from Cloud Run
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
