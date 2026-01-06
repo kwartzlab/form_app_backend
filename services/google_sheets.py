@@ -164,7 +164,7 @@ def add_to_google_sheet(endpoint, data, file_links):
             row = buildrow(timestamp, endpoint, data, expense, file_links_str)
             rows.append(row)
 
-        sheet.append_rows(rows)
+        sheet.append_rows(rows, table_range="A1")
         
         return True
     except Exception as e:
