@@ -18,25 +18,7 @@ from services.utils import log_execution_time
 from services.logger import setup_logger, logger, RequestIDFilter
 import uuid
 
-@log_execution_time
-def validate_config():
-    """Check all required environment variables are set"""
-    required = [
-        'CAPTCHA_SECRET',
-        'DEV_OUTBOUND_EMAIL_ADDRESS' if Config.FLASK_ENV == "development" else 'OUTBOUND_EMAIL_ADDRESS',
-        'EMAIL_PASSWORD',
-        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'RR_RECIPIENT_EMAIL',
-        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'PA_RECIPIENT_EMAIL',
-        'RR_SHEET_NAME',
-        'PA_SHEET_NAME'
-    ]
-    
-    missing = [var for var in required if not os.environ.get(var)]
-    
-    if missing:
-        #TODO implement proper logging
-        logger.error(f"Missing required environment variables: {missing}")    
-        raise EnvironmentError(f"Missing: {', '.join(missing)}")
+########### Setup #############
 
 app = Flask(__name__)
 setup_logger()          # initialize logging
@@ -64,6 +46,38 @@ else:
         key_func=get_remote_address,
         default_limits=[]
     )
+
+########### Helper Functions ####################
+
+@app.before_request
+def set_request_id():
+    g.request_id = str(uuid.uuid4())
+    logger.info("Incoming request", extra={
+        'method': request.method,
+        'path': request.path,
+        'remote_addr': request.remote_addr
+    })
+
+@log_execution_time
+def validate_config():
+    logger.info("validating config")
+    """Check all required environment variables are set"""
+    required = [
+        'CAPTCHA_SECRET',
+        'DEV_OUTBOUND_EMAIL_ADDRESS' if Config.FLASK_ENV == "development" else 'OUTBOUND_EMAIL_ADDRESS',
+        'EMAIL_PASSWORD',
+        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'RR_RECIPIENT_EMAIL',
+        'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'PA_RECIPIENT_EMAIL',
+        'RR_SHEET_NAME',
+        'PA_SHEET_NAME'
+    ]
+    
+    missing = [var for var in required if not os.environ.get(var)]
+    
+    if missing:
+        #TODO implement proper logging
+        logger.error(f"Missing required environment variables: {missing}")    
+        raise EnvironmentError(f"Missing: {', '.join(missing)}")
 
 @log_execution_time
 def verify_hcaptcha(token):
@@ -263,6 +277,8 @@ def submission_handler_with_retry(data, files, endpoint):
                 return [0, "Internal Server Error", 500]
                 
     return submission_results
+
+########################### Endpoints #############################
 
 @app.route('/submit-PA', methods=['POST'])
 @limiter.limit("10 per hour")  # Max 10 submissions per hour per IP
