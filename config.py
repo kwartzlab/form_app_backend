@@ -13,9 +13,9 @@ class Config:
     DEV_OUTBOUND_EMAIL_ADDRESS = os.environ.get('DEV_OUTBOUND_EMAIL_ADDRESS')
     EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
     RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL')
-    GOOGLE_SHEET_NAME = {
-        "Reimbursement Request": os.environ.get('RR_SHEET_NAME'),
-        "Purchase Approval": os.environ.get('PA_SHEET_NAME')
+    GOOGLE_SHEET_ID = {
+        "Reimbursement Request": os.environ.get('RR_SHEET_ID'),
+        "Purchase Approval": os.environ.get('PA_SHEET_ID')
     }
     GOOGLE_WORKSHEET_NAME = {
         "Reimbursement Request": os.environ.get('RR_WORKSHEET_NAME'),
