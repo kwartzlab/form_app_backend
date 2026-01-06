@@ -41,15 +41,7 @@ def validate_config():
 app = Flask(__name__)
 setup_logger()          # initialize logging
 logger.addFilter(RequestIDFilter())
-
-@app.before_request
-def set_request_id():
-    g.request_id = str(uuid.uuid4())
-    logger.info("Incoming request", extra={
-        'method': request.method,
-        'path': request.path,
-        'remote_addr': request.remote_addr
-    })
+logger.info("TEST: Logger is working")
 
 CORS(app)  # Enable CORS for all routes
 
@@ -76,6 +68,7 @@ else:
 @log_execution_time
 def verify_hcaptcha(token):
     """Verify hCAPTCHA token"""
+    logger.info("validating hcaptcha")
     try:
         response = req.post(
             'https://hcaptcha.com/siteverify',
@@ -98,6 +91,7 @@ def validate_and_extract_input(endpoint, submissionReq):
     Validate captcha, extract form data, validate files, and sanitize all inputs
     Returns: [status, data/error_message, http_code]
     """
+    logger.info("validating input")
     try:
         # Verify captcha first before doing anything else
         captcha_token = submissionReq.form.get('captchaToken')
@@ -145,6 +139,7 @@ def validate_and_extract_input(endpoint, submissionReq):
     
 @log_execution_time
 def build_return_message(results, endpoint):
+    logger.info("building return message")
     message = endpoint + ' Submission Succeeded'
     if not results['slack'] or not results['email']:
         message = message + ', but one or more integrations failed. Please contact the treasurer'
@@ -157,10 +152,14 @@ def core_submission(data, files, endpoint):
     Process a submission: generate ID, validate and upload files, write to sheet
     Returns: [status, data/error, http_code] where status: 1=success, 0=error, -1=race condition
     """
+    logger.info("processing submission")
     # Establish an ID for the submission
+    logger.info("attempting to get next id")
+    print("attempting to get next id")
     data['id'] = get_next_id_from_google_sheet(endpoint) 
     if data['id'] == 0:
-        print(f"Error processing submission: could not access google sheet")
+        # print(f"Error processing submission: could not access google sheet")
+        logger.error("failed to access spreadsheet, returned id == 0")
         return [0, 'Server Error: failed to access spreadsheet', 500]
     
     # Validate and upload files to Google Drive
@@ -231,6 +230,7 @@ def submission_handler_with_retry(data, files, endpoint):
     Handle submissions with retry logic for race conditions
     Returns: [status, data/error, http_code]
     """
+    logger.info("submission handler retry outer loop")
     race_condition = True
     counter = 0
     
@@ -269,6 +269,7 @@ def submission_handler_with_retry(data, files, endpoint):
 @log_execution_time
 def submit_purchApproval():
     """Handle Purchase Approval submission"""
+    logger.info("purchase approval endpoint")
     endpoint = 'Purchase Approval'
     try:
         validation_result = validate_and_extract_input(endpoint, request)
@@ -304,6 +305,7 @@ def submit_purchApproval():
 @log_execution_time
 def submit_reimbursement():
     """Handle reimbursement submission"""
+    logger.info("reimbursement request endpoint")
     endpoint = 'Reimbursement Request'
     try:
         validation_result = validate_and_extract_input(endpoint, request)
@@ -337,7 +339,14 @@ def submit_reimbursement():
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    logger.info("reimbursement request endpoint")
     return jsonify({'status': 'healthy'}), 200
+
+@app.route('/api/test-logger')
+def test_logger():
+    logger.info("Test route called")
+    logger.error("Test error message")
+    return jsonify({"status": "check logs"})
 
 if __name__ == '__main__':
     validate_config()

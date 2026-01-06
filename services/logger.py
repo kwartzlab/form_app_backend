@@ -3,7 +3,7 @@ import sys
 from functools import wraps
 import time
 import uuid
-from flask import request, g
+from flask import request, g, has_request_context
 
 def setup_logger():
     """Configure application logger for production."""
@@ -30,7 +30,10 @@ logger = logging.getLogger('form_app')
 class RequestIDFilter(logging.Filter):
     """Add request ID to all log records."""
     def filter(self, record):
-        record.request_id = getattr(g, 'request_id', 'no-request')
+        if has_request_context():
+            record.request_id = getattr(g, 'request_id', 'no-request')
+        else:
+            record.request_id = 'startup'
         return True
 
 def log_execution_time(func):
