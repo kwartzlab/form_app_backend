@@ -21,7 +21,7 @@ def setup_google_sheets():
     return _sheets_client
 
 def get_worksheet(client, endpoint):
-    spreadsheet = client.open(Config.GOOGLE_SHEET_ID[endpoint])
+    spreadsheet = client.open_by_key(Config.GOOGLE_SHEET_ID[endpoint])
     logger.info("accessed spreadsheet")
     sheet = spreadsheet.worksheet(Config.GOOGLE_WORKSHEET_NAME[endpoint]) 
     logger.info("accessed worksheet")
