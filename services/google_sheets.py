@@ -112,7 +112,7 @@ def get_next_id_from_google_sheet(endpoint):
         # print(f"Error accessing google sheet: {e}")
         return 0            #if accessing google sheet failed, abort attempt
     
-def buildrow(timestamp, endpoint, data, expense, file_links_str):
+def buildrow(timestamp, endpoint, data, expense, row_file_entry):
     if endpoint == "Reimbursement Request":
         row = [
             data['id'],
@@ -125,7 +125,7 @@ def buildrow(timestamp, endpoint, data, expense, file_links_str):
             expense.get('description', ''),
             expense.get('amount', ''),
             expense.get('hst', ''),
-            file_links_str,
+            row_file_entry,
             data.get('comments', '')
         ]
     elif endpoint == "Purchase Approval":
@@ -138,7 +138,7 @@ def buildrow(timestamp, endpoint, data, expense, file_links_str):
             expense.get('vendor', ''),
             expense.get('description', ''),
             expense.get('amount', ''),
-            file_links_str,
+            row_file_entry,
             data.get('comments', '')
         ]
     else:
@@ -156,15 +156,29 @@ def add_to_google_sheet(endpoint, data, file_links):
         
         # Prepare row data
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        file_links_str = ', '.join(file_links) if file_links else 'No attachments'
 
         # Add each expense as a separate row
         rows = []
-        for expense in data['expenses']:
-            row = buildrow(timestamp, endpoint, data, expense, file_links_str)
+        for i, expense in enumerate(data['expenses']):
+            # add one receipt link per expense row, so file links work in google sheets
+            row_file_entry = file_links[i] if (i < len(file_links)) else '-'
+            row = buildrow(timestamp, endpoint, data, expense, row_file_entry)
             rows.append(row)
 
-        sheet.append_rows(rows, table_range="A1")
+        #if there are more file links than expense rows, add extra lines
+        if (len(data['expenses']) < len(file_links)):
+            for leftover_file in file_links[len(data['expenses']):]:
+                dummy_expense = {
+                    'approval': '-',
+                    'vendor': '-',
+                    'description': '-',
+                    'amount': '-',
+                    'hst': '-'
+                }
+                row = buildrow(timestamp, endpoint, data, dummy_expense, leftover_file)
+                rows.append(row)
+
+        sheet.append_rows(rows, table_range="A1", value_input_option='USER_ENTERED')
         
         return True
     except Exception as e:

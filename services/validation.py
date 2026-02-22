@@ -215,7 +215,7 @@ def validate_form_data(endpoint, data):
         valid, result = validate_decimal(expense.get('amount'), f'Amount (expense {i})')
         if not valid:
             return False, result, None
-        sanitized_expense['amount'] = str(result)  # Store as string for consistency
+        sanitized_expense['amount'] = result  # Store as number to prevent addition of backtick
         
         # Endpoint-specific fields
         if endpoint == "Reimbursement Request":
