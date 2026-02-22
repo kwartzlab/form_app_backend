@@ -148,7 +148,7 @@ def email_builder(endpoint, data, file_links, email_type):
     """Build email HTML from unified template"""
     form_specific = {
         "Reimbursement Request": {
-            "message": "Thank you for submitting your request! Our Treasurer will be in touch shortly."
+            "message": "Thank you for submitting your request! Our Treasurer will be in touch if there are any issues."
         },
         "Purchase Approval": {
             "message": "Thank you for submitting your purchase approval request! Remember to keep an eye on the member's list for questions and +1s from the Board."

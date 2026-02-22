@@ -76,8 +76,10 @@ def validate_config():
         'EMAIL_PASSWORD',
         'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'RR_RECIPIENT_EMAIL',
         'DEV_RECIPIENT_EMAIL' if Config.FLASK_ENV == "development" else 'PA_RECIPIENT_EMAIL',
-        'RR_SHEET_NAME',
-        'PA_SHEET_NAME'
+        'RR_SHEET_ID',
+        'PA_SHEET_ID',
+        'RR_WORKSHEET_NAME',
+        'PA_WORKSHEET_NAME'
     ]
     
     missing = [var for var in required if not os.environ.get(var)]
