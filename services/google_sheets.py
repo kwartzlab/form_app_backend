@@ -55,15 +55,34 @@ def id_iterator(client, endpoint):
             if not id_column or len(id_column) == 0:
                 return [0]
             lastId = id_column[-1]
-            if lastId[:2] == "PA":      #valid format
-                try:
-                    lastId_num = int(lastId[2:])
-                    newId_num = lastId_num + 1
-                    return [1, f"PA{newId_num:04d}"]
-                except ValueError: # invalid integer after "PA"
-                    return [0]
-            else:
-                return [0]
+
+            # start iterating up through the column to find a valid id
+            vals = []
+            reverseIndex = -1
+            idToCheck = lastId
+            retVal = ""
+            while (retVal == ""):
+                if idToCheck[:2] == "PA":      #valid format
+                    try:                    # apparently try...except is they pythonic way to check for a valid integer
+                        lastId_num = int(idToCheck[2:])
+                        newId_num = lastId_num + len(vals) + 1
+                        return [1, f"PA{newId_num:04d}"]
+                    except ValueError: # invalid integer after "PA", issue warning and proceed
+                        logger.info(f"found invalid id starting with PA: {idToCheck}")
+                
+                # last id wasn't valid, iterate to next
+                if idToCheck not in vals:
+                    vals.append(idToCheck)
+                reverseIndex -= 1
+                if reverseIndex <= -1*len(id_column):
+                    # iterated through the entire sheet and didn't find any valid ids, best
+                    # guess is the number of unique values +1
+                    return [1, f"PA{len(vals)+1:04d}"]        
+                idToCheck = id_column[reverseIndex]
+            
+            # should not hit this point in execution
+            logger.warning("hit unexpected return when iterating PA id")
+            return [0]
         else:       #invalid endpoint
             # print(f"Invalid endoint")
             logger.warning("Invalid Endpoint")
