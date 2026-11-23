@@ -219,8 +219,8 @@ def core_submission(data, files, endpoint):
         for file in uploaded_files:
             delete_from_google_drive(file['fid'])
         error_msg = 'File upload failed: ' + '; '.join(upload_errors) if upload_errors else 'Server Error: failed to upload one or more files'
-        # print(f"Error processing submission: {error_msg}")
-        logger.error("Error Occurred", extra={'error processing submission':str(e)}, exc_info=True)
+        # no exception object exists here (upload failures are collected, not raised)
+        logger.error(f"Error processing submission: {error_msg}")
         return [0, error_msg, 400]
     
     # Pack files and file ids into results struct

@@ -210,7 +210,9 @@ def send_email_notification(endpoint, data, file_links):
         ack_msg['Subject'] = f"New {endpoint} - {data['firstName']} {data['lastName']}"
         ack_msg.attach(MIMEText(thanks_html_body, 'html'))
         
-        server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT)
+        # timeout is required: the default is to block forever, and a wedged SMTP
+        # connection permanently eats one of gunicorn's worker threads
+        server = smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT, timeout=30)
         server.starttls()
         server.login(sender_email, Config.EMAIL_PASSWORD)
         

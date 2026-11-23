@@ -13,11 +13,3 @@ credentials.json
 .git
 .gitignore
 README.md
-```
-
-**4. Verify `.gitignore`** includes:
-```
-credentials.json
-.env
-__pycache__/
-*.pyc

@@ -1,6 +1,8 @@
 import os
 import json
 import io
+import httplib2
+import google_auth_httplib2
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -11,6 +13,16 @@ from services.logger import logger
 
 _folder_cache = {}
 
+def _drive_service(credentials, timeout=60):
+    """Build a Drive service over an HTTP client with a socket timeout.
+
+    A plain build(..., credentials=...) uses sockets with no timeout, so a
+    stalled connection blocks a gunicorn thread forever (threads are a fixed
+    pool of 8 - losing all of them takes the whole app down).
+    """
+    http = google_auth_httplib2.AuthorizedHttp(credentials, http=httplib2.Http(timeout=timeout))
+    return build('drive', 'v3', http=http)
+
 @log_execution_time
 def delete_from_google_drive(file_id):
     try:
@@ -18,7 +30,7 @@ def delete_from_google_drive(file_id):
         credentials = get_credentials(delegate_to=delegate)
         
         # Build Drive API service
-        service = build('drive', 'v3', credentials=credentials)
+        service = _drive_service(credentials)
 
         # Use Shared Drive
         supports_all_drives = {'supportsAllDrives': True}
@@ -42,7 +54,7 @@ def upload_to_google_drive(file_data, filename, request_id, parent_folder_id=Non
     try:
         delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS
         credentials = get_credentials(delegate_to=delegate)
-        service = build('drive', 'v3', credentials=credentials)
+        service = _drive_service(credentials)
         supports_all_drives = {'supportsAllDrives': True}
         
         cache_key = f"{parent_folder_id}_{request_id}"

@@ -18,6 +18,8 @@ def setup_google_sheets():
         delegate = Config.OUTBOUND_EMAIL_ADDRESS if Config.FLASK_ENV == 'production' else Config.DEV_OUTBOUND_EMAIL_ADDRESS
         credentials = get_credentials(delegate_to=delegate)
         _sheets_client = gspread.authorize(credentials)
+        # without a timeout, a stalled Sheets call blocks a gunicorn thread forever
+        _sheets_client.set_timeout(30)
     return _sheets_client
 
 def get_worksheet(client, endpoint):
